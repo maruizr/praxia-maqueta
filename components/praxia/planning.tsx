@@ -54,7 +54,21 @@ export default function Planning({
       !week || (+r.date.slice(-2) >= start && +r.date.slice(-2) < start + 7),
   );
   const [editing, setEditing] = useState<Row | null>(null);
+  const [confirmRemoval, setConfirmRemoval] = useState(false);
+  function removeActivity() {
+    if (!editing || !confirmRemoval) return;
+    const matches = (r: { store: string; date: string }) => r.store === editing.store && r.date === editing.date;
+    if (visits.some(matches)) return notify("Esta visita ya está registrada y no se puede retirar.");
+    setPlan(plan.filter((r) => !matches(r)));
+    publish(false);
+    setConfirmRemoval(false);
+    setEditing(null);
+    A(false);
+    notify("Actividad retirada del plan.");
+    requestAnimationFrame(() => document.getElementById("add-plan-activity")?.focus());
+  }
   function showForm(row: Row | null, suggestedStore = stores[0].id) {
+    setConfirmRemoval(false);
     setEditing(row);
     D(row?.date ?? (suggestedStore === stores[0].id ? today : "2026-11-30"));
     S(row?.store ?? suggestedStore);
@@ -97,7 +111,7 @@ export default function Planning({
           <h2>
             <CalendarDays size={20} /> Noviembre 2026
           </h2>
-          <button className="primary" onClick={() => showForm(null)}>
+          <button id="add-plan-activity" className="primary" onClick={() => showForm(null)}>
             <Plus size={15} /> Actividad
           </button>
         </div>
@@ -114,7 +128,17 @@ export default function Planning({
           }{" "}
           online
         </p>
-        {add && (
+        {add && confirmRemoval && editing ? (
+          <section className="person form-stack" aria-labelledby="remove-title">
+            <h3 id="remove-title">¿Retirar esta actividad del plan?</h3>
+            <p><strong>{stores.find((s) => s.id === editing.store)?.name} · {dateText(editing.date)}</strong><br />{editing.type} · {editing.mode}</p>
+            <p>La actividad dejará de aparecer en la agenda y el plan quedará como borrador.</p>
+            <div className="actions">
+              <button autoFocus className="secondary" onClick={() => { setConfirmRemoval(false); requestAnimationFrame(() => document.getElementById("remove-activity")?.focus()); }}>Volver sin retirar</button>
+              <button className="primary" onClick={removeActivity}>Confirmar retiro</button>
+            </div>
+          </section>
+        ) : add && (
           <div className="person form-stack">
             <h3>{editing ? "Editar actividad" : "Nueva actividad"}</h3>
             <div className="form-grid">
@@ -157,6 +181,7 @@ export default function Planning({
               </label>
             </div>
             <div className="actions">
+              {editing && <button id="remove-activity" className="text-btn" onClick={() => setConfirmRemoval(true)}>Retirar actividad</button>}
               <button className="secondary" onClick={() => A(false)}>Cancelar</button>
               <button className="primary" onClick={save}>
                 {editing ? "Guardar cambios" : "Guardar actividad"}
@@ -255,7 +280,7 @@ export default function Planning({
               </table>
             </div>
             {!rows.length && (
-              <p className="empty">Sin actividades esta semana.</p>
+              <p className="empty">{week ? "Sin actividades esta semana." : "El plan está vacío. Agrega una actividad para publicarlo."}</p>
             )}
             <div className="actions">
               <button
@@ -269,7 +294,7 @@ export default function Planning({
               </button>
               <button
                 className="primary"
-                disabled={published}
+                disabled={published || !plan.length}
                 onClick={() => {
                   publish(true);
                   notify("Plan publicado para jefatura.");
