@@ -254,6 +254,7 @@ function App({ ingreso }: { ingreso: boolean }) {
       notify("No se pudo procesar la cola.");
     }
   }
+  const allVisits:Visit[]=[...visits,...settings.batches.filter(b=>b.source==='Histórico de visitas').flatMap(b=>b.rows.map(([store,date,mode,author],i)=>({id:'historico-'+i,store,date,mode,author,actions:[],other:'Histórico importado',queued:false})))];
   const count = visits.filter((v) => v.queued).length;
   return (
     <div className="shell">
@@ -427,7 +428,7 @@ function App({ ingreso }: { ingreso: boolean }) {
               go={go}
               open={open}
               visit={newVisit}
-              visits={visits}
+              visits={allVisits}
               tasks={tasks}
               plan={plan}
             />
@@ -441,7 +442,7 @@ function App({ ingreso }: { ingreso: boolean }) {
           ) : ["Mi cartera", "Focos rojos"].includes(page) ? (
             <Portfolio
               key={page}
-              visits={visits}
+              visits={allVisits}
               tasks={tasks}
               red={page === "Focos rojos"}
               open={open}
@@ -449,7 +450,7 @@ function App({ ingreso }: { ingreso: boolean }) {
           ) : page === "Ficha de farmacia" ? (
             <Detail
               s={stores.find((s) => s.id === id)!}
-              visits={visits}
+              visits={allVisits}
               tasks={tasks}
               visit={newVisit}
             />
@@ -472,7 +473,7 @@ function App({ ingreso }: { ingreso: boolean }) {
               published={published}
               publish={H}
               notices={notices.filter((n) => n.to === "Todas" || n.to === who)}
-              visits={visits}
+              visits={allVisits}
               tasks={tasks}
               open={open}
               notify={notify}
@@ -481,10 +482,11 @@ function App({ ingreso }: { ingreso: boolean }) {
             <Resources
               key={page}
               page={page}
-              visits={visits}
+              visits={allVisits}
               open={open}
               sessions={sessions}
               setSessions={U}
+              who={who} management={role !== roles[0]}
               edit={settings.permission(who, "escuela")}
             />
           ) : null}

@@ -39,6 +39,7 @@ export default function VisitForm({
     [err, E] = useState(""),
     [extra, X] = useState("");
   const settings = useSettings(),
+    employees = settings.roster,
     act = actions[idx];
   function patch(p: Partial<Action>) {
     A(actions.map((a, i) => (i === idx ? { ...a, ...p } : a)));
@@ -72,7 +73,8 @@ export default function VisitForm({
         a.persons.some(
           (p) =>
             !p.topics.length ||
-            ((p.result === outcomes[3] || p.result === outcomes[1]) && !p.due),
+            (p.result === outcomes[3] && !p.kind.trim()) ||
+            ((p.result === outcomes[3] || p.result === outcomes[1]) && (!p.due || p.due < date)),
         ),
     );
     if (!date || date > today || (mode === "Otros" && !other.trim()))
@@ -80,7 +82,7 @@ export default function VisitForm({
     if (bad !== -1) {
       I(bad);
       return E(
-        "Agrega al menos una persona y selecciona un tema por participante. Revisa las fechas de seguimiento.",
+        "Cada gestión necesita participantes y temas. Para un seguimiento, indica el tipo y una fecha igual o posterior a la visita.",
       );
     }
     save({
@@ -166,6 +168,7 @@ export default function VisitForm({
             <Plus size={14} /> Otra gestión
           </button>
         </div>
+        {actions.length>1&&<button className="text-btn" onClick={()=>{A(actions.filter((_,i)=>i!==idx));I(Math.max(0,idx-1));E('')}}>Quitar gestión {idx+1}</button>}
         <label>
           Tipo de gestión
           <select
@@ -305,7 +308,7 @@ export default function VisitForm({
                   Fecha sugerida
                   <input
                     type="date"
-                    value={p.due}
+                    min={date} value={p.due}
                     onChange={(e) => person(p.id, { due: e.target.value })}
                   />
                 </label>

@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import { useSettings } from './settings';
+import { download } from './downloads';
 import { exportCalendar } from "./export-calendar";
 import { Download, BookOpen, Plus } from "lucide-react";
 import { stores, status, seedTasks, dateText, type Visit } from "./data";
@@ -10,8 +12,9 @@ export function Resources({
   open,
   sessions,
   setSessions,
-  edit,
+  edit, who, management,
 }: {
+  who:string; management:boolean;
   page: string;
   visits: Visit[];
   open: (id: string) => void;
@@ -19,6 +22,8 @@ export function Resources({
   setSessions: (s: Session[]) => void;
   edit: boolean;
 }) {
+  const settings=useSettings();
+  const [notice,showNotice]=useState('');
   const [tab, T] = useState("Calendario"),
     [d, D] = useState(26),
     [title, N] = useState(""),
@@ -124,6 +129,9 @@ export function Resources({
             </>
           ) : (
             <>
+              <h3>Publicidad del mes</h3>
+              {settings.publicity ? <button className="secondary" onClick={()=>download(settings.publicity!,settings.publicity!.name)}>Descargar · {settings.publicity.name}</button> : <small>Aún no hay publicidad para noviembre.</small>}
+              {settings.permission(who,'publicidad') && <label>Cargar publicidad (imagen o PDF, hasta 10 MB)<input type="file" accept="image/*,application/pdf" onChange={e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>10485760||(!f.type.startsWith('image/')&&f.type!=='application/pdf'))return showNotice('Selecciona una imagen o PDF de hasta 10 MB.');settings.setPublicity(f);showNotice('Publicidad disponible para el equipo.')}}/></label>}{notice&&<p role="status">{notice}</p>}
               {[
                 "Guía de productos G8",
                 "Ficha de capacitación en terreno",
@@ -150,6 +158,7 @@ export function Resources({
       </>
     );
   if (page === "Mi desempeño") {
+    visits=visits.filter(v=>v.author===who&&v.date.startsWith('2026-11'));
     const metrics = [
       [
         "Gestiones",
@@ -210,7 +219,7 @@ export function Resources({
         5,
         2,
       ],
-      ["Días en terreno", 12, 18, 11],
+      ["Días en terreno", new Set(['02','03','04','05','06','09','10','11','12','13','16','17'].map(d=>'2026-11-'+d).concat(visits.filter(v=>v.mode==='Presencial').map(v=>v.date))).size, 18, 11],
     ];
     return (
       <>
@@ -235,7 +244,15 @@ export function Resources({
       </>
     );
   }
-  const inv = page === "Inventario G8";
+  const inv = page === 'Inventario G8';
+  const sales=stores.map((s,i)=>({s,amount:1890000+i*32789,goal:65+i%22,g8:19+i%9})).filter(({s})=>management||settings.allowed(who,'Ventas',s.id));
+  const exportable=sales.filter(({s})=>management||settings.allowed(who,'Exportar ventas',s.id));
+  const stock=new Map<string,{id:string;product:string;units:number}>();
+  function item(id:string,product:string,units:number){stock.set(id+':'+product,{id,product,units})}
+  stores.slice(0,12).forEach((s,i)=>item(s.id,['Vitamina C G8','Magnesio G8','Omega 3 G8'][i%3],i%3));
+  for(const b of settings.batches)if(b.source==='Inventario G8')for(const [id,product,n] of b.rows)item(id,product,+n);
+  const stockRows=Array.from(stock.values()).filter(r=>r.units<5&&(management||settings.allowed(who,'Inventario',r.id))&&(filter==='Todos'||(r.units===0?'Quiebre':'Stock bajo')===filter));
+  const rows=inv?stockRows.map(r=>({s:stores.find(s=>s.id===r.id)!,a:r.product,b:String(r.units),c:r.units?'Stock bajo':'Quiebre'})):sales.map(r=>({s:r.s,a:'$'+r.amount.toLocaleString('es-CL'),b:r.goal+' %',c:r.g8+' %'}));
   return (
     <>
       <div className="page-intro">
@@ -261,6 +278,7 @@ export function Resources({
       <section className="panel form-panel">
         <div className="heading-line">
           <h2>{inv ? "Alertas de inventario" : "Ventas por farmacia"}</h2>
+          {!inv && exportable.length>0 && <button className="secondary" onClick={()=>download(new Blob(['\uFEFF'+[['Farmacia','Nombre','Venta mensual','Avance (%)','G8 (%)'].join(';'),...exportable.map(r=>[r.s.id,r.s.name,r.amount,r.goal,r.g8].join(';'))].join('\r\n')],{type:'text/csv;charset=utf-8'}),'ventas-autorizadas.csv')}><Download size={15}/>Exportar ventas ({exportable.length})</button>}
           {inv && (
             <select
               aria-label="Filtrar por stock"
@@ -291,30 +309,25 @@ export function Resources({
               </tr>
             </thead>
             <tbody>
-              {stores.slice(0, inv ? 12 : 56).map((s, i) => {
-                const state = i % 3 ? "Stock bajo" : "Quiebre";
-                if (inv && filter !== "Todos" && filter !== state) return null;
+              {!rows.length&&<tr><td colSpan={4}>No hay registros para este filtro y alcance.</td></tr>}
+              {rows.map(({s,a,b,c}) => {
                 return (
-                  <tr key={s.id}>
+                  <tr key={s.id+':'+a}>
                     <td>
-                      <button className="text-btn" onClick={() => open(s.id)}>
-                        {s.name}
-                      </button>
+                      {management||settings.owner(s.id)===who?<button className="text-btn" onClick={() => open(s.id)}>{s.name}</button>:<strong>{s.name}</strong>}
                       <small>{s.id}</small>
                     </td>
                     <td>
-                      {inv
-                        ? ["Vitamina C G8", "Magnesio G8", "Omega 3 G8"][i % 3]
-                        : "$" + (1890000 + i * 32789).toLocaleString("es-CL")}
+                      {a}
                     </td>
-                    <td>{inv ? i % 3 : 65 + (i % 22) + " %"}</td>
+                    <td>{b}</td>
                     <td>
                       <span
                         className={
-                          "pill " + (inv && i % 3 === 0 ? "red" : "green")
+                          "pill " + (c === 'Quiebre' ? "red" : "green")
                         }
                       >
-                        {inv ? state : 19 + (i % 9) + " %"}
+                        {c}
                       </span>
                     </td>
                   </tr>

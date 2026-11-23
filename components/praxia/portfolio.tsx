@@ -127,7 +127,8 @@ export function Detail({
   visit: () => void;
 }) {
   const settings = useSettings();
-  s = { ...s, freq: settings.frequency[s.id] || s.freq };
+  const employees=settings.roster;
+  s = { ...s, school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq };
   const st = status(s, visits, tasks),
     [tab, T] = useState("Resumen");
   const own = visits.filter((v) => v.store === s.id);
@@ -175,6 +176,8 @@ export function Detail({
             <dl className="facts">
               {Object.entries({
                 Zona: s.zone,
+                'Última asistencia a Simi Escuela': dateText(s.school),
+                'Satisfacción (última encuesta)': settings.batches.filter(b=>b.source==='Encuesta de satisfacción').flatMap(b=>b.rows.filter(r=>r[0]===s.id)).at(-1)?.[1]?.concat(' / 5') || 'Sin respuesta',
                 Región: s.region,
                 Supervisor: s.supervisor,
                 "Jefe comercial": s.boss,
@@ -235,7 +238,7 @@ export function Detail({
             {own.map((v) => (
               <details open key={v.id}>
                 <summary>
-                  {dateText(v.date)} · {v.mode} · {v.author}
+                  {dateText(v.date)} · {v.mode}{v.mode==='Otros'&&v.other?' ('+v.other+')':''} · {v.author}{v.queued?' · Pendiente de sincronizar':''}
                 </summary>
                 {v.actions.map((a, i) => (
                   <div className="person" key={i}>
@@ -244,7 +247,7 @@ export function Detail({
                     </h3>
                     {a.persons.map((p) => (
                       <p key={p.id}>
-                        {p.name} · {p.topics.join(", ")} · {p.result} {p.note}
+                        {p.name} · {p.topics.join(", ")} · {p.result}{['Requiere seguimiento','Reservada para una fecha'].includes(p.result)&&p.due?' · '+dateText(p.due):''}{p.result==='Requiere seguimiento'?' · '+p.kind:''} {p.note}
                       </p>
                     ))}
                     <small>{a.note}</small>

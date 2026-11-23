@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useSettings, team } from "./settings";
 import { stores, today, dateText, type Row } from "./data";
+import { ImportPanel } from './import-panel';
 import type { Notice } from "./planning";
 export default function Admin({
   role,
@@ -33,12 +34,10 @@ export default function Admin({
     [records, R] = useState<
       { tab: string; text: string; store: string; date: string; end: string }[]
     >([]),
-    [source, F] = useState("Dotación de personal"),
-    [preview, P] = useState<string[]>([]),
-    [reject, J] = useState(0),
+
     [info, A] = useState("Ventas"),
     [territory, Z] = useState("Oriente"),
-    [upload, Q] = useState(false);
+    [query, setQuery] = useState('');
   function record(text: string) {
     R([...records, { tab, text, store, date, end }]);
     notify("Registro confirmado.");
@@ -165,6 +164,7 @@ export default function Admin({
           </>
         ) : tab === "Asignaciones" ? (
           <>
+            <details><summary>Consultar carteras y responsables</summary><label>Buscar por farmacia, código o responsable<input value={query} onChange={e=>setQuery(e.target.value)}/></label>{stores.filter(s=>(s.name+s.id+settings.owner(s.id)).toLowerCase().includes(query.trim().toLowerCase())).map(s=><div className="simple-row" key={s.id}><div><strong>{s.name}</strong><small>{s.id} · {settings.owner(s.id)}</small></div></div>)}{!stores.some(s=>(s.name+s.id+settings.owner(s.id)).toLowerCase().includes(query.trim().toLowerCase()))&&<p>Sin coincidencias.</p>}</details>
             <h2>Borrador de asignación quincenal</h2>
             <label>
               Farmacia
@@ -288,6 +288,7 @@ export default function Admin({
                   (Date.parse(end) - Date.parse(date)) / 86400000 + 1;
                 if (!Number.isFinite(days) || days < 1 || days > 90)
                   return notify("La vigencia debe ser de 1 a 90 días.");
+                settings.approve({who,info,territory,start:date,end});
                 record(
                   `${who} · ${info} · ${territory} · ${dateText(date)} al ${dateText(end)}`,
                 );
@@ -366,77 +367,7 @@ export default function Admin({
             ))}
           </>
         ) : (
-          <>
-            <h2>Cargas de datos externos</h2>
-            <label>
-              Fuente
-              <select
-                value={source}
-                onChange={(e) => {
-                  F(e.target.value);
-                  P([]);
-                }}
-              >
-                {[
-                  "Dotación de personal",
-                  "Inventario G8",
-                  "Asistencia de Simi Escuela",
-                  "Encuesta de satisfacción",
-                  "Histórico de visitas",
-                ].map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Archivo CSV
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const lines = (await f.text()).trim().split(/\r?\n/).slice(1);
-                  const valid = lines.filter(
-                    (l) =>
-                      stores.some((s) => s.id === l.split(/[,;]/)[0]) &&
-                      l.split(/[,;]/)[1]?.trim(),
-                  );
-                  P(valid);
-                  J(lines.length - valid.length);
-                }}
-              />
-            </label>
-            <small>
-              Primera fila: encabezado. Columnas: código de farmacia y valor,
-              separadas por coma o punto y coma.
-            </small>
-            <p>
-              Vista previa · {preview.length} filas válidas · {reject}{" "}
-              rechazadas
-            </p>
-            {preview.slice(0, 5).map((x, i) => (
-              <small key={i}>{x}</small>
-            ))}
-            <button
-              className="primary"
-              disabled={!preview.length}
-              onClick={() => {
-                if (
-                  source === "Histórico de visitas" &&
-                  records.some((x) => x.text.startsWith(source))
-                )
-                  return notify("El histórico admite una sola carga.");
-                record(
-                  `${source}: ${preview.length} cargadas, ${reject} rechazadas`,
-                );
-                P([]);
-                J(0);
-              }}
-            >
-              Confirmar carga
-            </button>
-          </>
+          <ImportPanel />
         )}
         {records
           .filter((r) => r.tab === tab)

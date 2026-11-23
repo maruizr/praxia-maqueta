@@ -17,6 +17,7 @@ import {
   type Visit,
   type Task,
 } from "./data";
+import {useSettings} from './settings';
 export type Notice = { date: string; title: string; to: string; hotel: string };
 export default function Planning({
   plan,
@@ -39,6 +40,7 @@ export default function Planning({
   open: (id: string) => void;
   notify: (s: string) => void;
 }) {
+  const settings=useSettings();
   const [week, W] = useState(false),
     [start, B] = useState(23),
     [tab, T] = useState("Actividades"),
@@ -47,7 +49,7 @@ export default function Planning({
     [store, S] = useState(stores[0].id),
     [mode, M] = useState("Presencial"),
     [type, Y] = useState(activities[0]),
-    [rejected, J] = useState<string[]>([]),
+
     [reason, R] = useState("");
   const rows = plan.filter(
     (r) =>
@@ -332,7 +334,8 @@ export default function Planning({
                 placeholder="Indica un motivo antes de rechazar"
               />
             </label>
-            {stores
+            {Object.keys(settings.rejected).length>0 && <details><summary>Sugerencias rechazadas ({Object.keys(settings.rejected).length})</summary>{Object.entries(settings.rejected).map(([id,motivo])=><p key={id}>{stores.find(s=>s.id===id)?.name} · {motivo}</p>)}</details>}
+            {stores.filter(s=>settings.owner(s.id)==='Camila Morales').map(s=>({...s,freq:settings.frequency[s.id]||s.freq}))
               .filter(
                 (s) =>
                   [
@@ -343,7 +346,7 @@ export default function Planning({
                   ]
                     .sort()
                     .at(-1)! < "2026-11-10" &&
-                  !rejected.includes(s.id) &&
+                  !settings.rejected[s.id] &&
                   !plan.some((r) => r.store === s.id && r.date > today),
               )
               .sort(
@@ -363,7 +366,7 @@ export default function Planning({
                     onClick={() => {
                       if (!reason.trim())
                         return notify("Escribe el motivo del rechazo.");
-                      J([...rejected, s.id]);
+                      settings.rejectSuggestion(s.id,reason.trim());
                       R("");
                     }}
                   >
