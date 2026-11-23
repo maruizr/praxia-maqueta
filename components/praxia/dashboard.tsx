@@ -1,5 +1,228 @@
-'use client'
-import {ArrowRight,ArrowUpRight,CalendarDays,ChevronRight,ClipboardCheck,Flag,Clock3,MapPin,Plus,Sun,Users,Store as Shop,Video,TriangleAlert,Target,TrendingUp,Route} from 'lucide-react'
-import {today,stores,status,type Visit,type Task,type Row} from './data'
-export function Spark({i}:{i:number}){const lines=['0,28 8,24 16,26 24,18 32,20 40,13 48,17 56,9 64,13 72,4','0,26 8,25 16,19 24,22 32,14 40,16 48,8 56,11 64,6 72,3','0,8 8,8 16,13 24,10 32,18 40,16 48,22 56,19 64,23 72,23','0,9 8,9 16,14 24,14 32,11 40,17 48,17 56,22 64,21 72,22'];return <svg aria-hidden="true" className={'spark c'+i} viewBox="0 0 72 32"><polygon points={'0,32 '+lines[i]+' 72,32'} fill="currentColor" opacity=".1"/><polyline points={lines[i]} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>}
-export default function Dashboard({go,open,visit,visits,tasks,plan,first='Camila'}:{go:(s:string)=>void,open:(s:string)=>void,visit:()=>void,visits:Visit[],tasks:Task[],plan:Row[],first?:string}){const red=stores.filter(s=>status(s,visits,tasks).p===1).length,late=tasks.filter(t=>!t.closed&&t.date<today).length,rows=plan.filter(r=>r.date===today);const data=[['Gestiones del mes',32+visits.reduce((n,v)=>n+v.actions.length,0),'de 45 planificadas',ClipboardCheck,'Mi desempeño'],['Personas alcanzadas',86+new Set(visits.flatMap(v=>v.actions.flatMap(a=>a.persons.map(p=>p.id)))).size,'colaboradores este mes',Users,'Mi desempeño'],['Farmacias en foco rojo',red,'requieren una visita',Flag,'Focos rojos'],['Pendientes vencidos',late,'requieren seguimiento',Clock3,'Mis pendientes']] as const;return <><section className="hero"><div className="hero-art"/><div className="hero-copy"><div className="eyebrow hero-date"><Sun size={15}/> Lunes, 23 de noviembre de 2026</div><h1>¡Buen día, {first}!</h1><p>Este es el panorama de tu jornada en terreno.</p><button className="primary" onClick={visit}><Plus size={16}/> Registrar visita</button></div></section><div className="section-title"><h2>Resumen de actividad</h2><span className="period"><CalendarDays size={14}/> Noviembre 2026</span></div><div className="metric-grid">{data.map(([label,n,sub,Icon,page],i)=><button className="metric" onClick={()=>go(page)} key={label}><span className="metric-head"><i className={'tile c'+i}><Icon size={18}/></i>{label}</span><div className="metric-body"><strong>{n}</strong><Spark i={i}/></div><small>{sub}</small></button>)}</div><div className="dashboard-bottom"><section className="panel agenda"><div className="panel-heading"><div className="eyebrow"><span className="dot"/> Mi planificación</div><div className="heading-line"><h2>Actividades de hoy <em>{rows.length}</em></h2><button className="text-btn" onClick={()=>go('Plan del mes')}>Ver plan <ArrowUpRight size={15}/></button></div></div>{rows.map((r,i)=>{const s=stores.find(s=>s.id===r.store)!;return <button key={i} className="activity" onClick={()=>open(s.id)}><i className={'activity-icon '+(r.mode==='Online'?'online':'')} >{r.mode==='Online'?<Video/>:<Shop/>}</i><div><small>{s.id} <b>·</b> {s.place}</small><h3>{s.name}</h3><span><span className={'pill '+(r.mode==='Online'?'violet':'green')}>{r.mode}</span><small>{r.type}</small></span></div><ChevronRight size={16}/></button>})}{!rows.length&&<p className="empty">No hay actividades para hoy.</p>}</section><div className="right-stack"><section className="panel alerts"><div className="eyebrow"><span className="dot gold"/> Atención prioritaria</div><h2>Alertas del día</h2><button onClick={()=>go('Focos rojos')}><i className="tile c2"><Flag size={17}/></i><div><strong>{red} farmacias en foco rojo</strong><small>Revisa tu cartera prioritaria</small></div><ChevronRight size={15}/></button><button onClick={()=>go('Mis pendientes')}><i className="tile c3"><Clock3 size={17}/></i><div><strong>{late} seguimientos vencidos</strong><small>Retoma los pendientes</small></div><ChevronRight size={15}/></button></section><button className="campaign" onClick={()=>go('Ventas y concursos')}><div className="campaign-lines"/><div className="eyebrow">Campaña vigente</div><h2>Impulso G8 <ArrowUpRight size={19}/></h2><p>Entrenamiento comercial · Noviembre</p></button></div></div></>}
+"use client";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  CalendarDays,
+  ChevronRight,
+  ClipboardCheck,
+  Flag,
+  Clock3,
+  MapPin,
+  Plus,
+  Sun,
+  Users,
+  Store as Shop,
+  Video,
+  TriangleAlert,
+  Target,
+  TrendingUp,
+  Route,
+} from "lucide-react";
+import { today, stores, status, type Visit, type Task, type Row } from "./data";
+export function Spark({ i }: { i: number }) {
+  const lines = [
+    "0,28 8,24 16,26 24,18 32,20 40,13 48,17 56,9 64,13 72,4",
+    "0,26 8,25 16,19 24,22 32,14 40,16 48,8 56,11 64,6 72,3",
+    "0,8 8,8 16,13 24,10 32,18 40,16 48,22 56,19 64,23 72,23",
+    "0,9 8,9 16,14 24,14 32,11 40,17 48,17 56,22 64,21 72,22",
+  ];
+  return (
+    <svg aria-hidden="true" className={"spark c" + i} viewBox="0 0 72 32">
+      <polygon
+        points={"0,32 " + lines[i] + " 72,32"}
+        fill="currentColor"
+        opacity=".1"
+      />
+      <polyline
+        points={lines[i]}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+export default function Dashboard({
+  go,
+  open,
+  visit,
+  visits,
+  tasks,
+  plan,
+  first = "Camila",
+}: {
+  go: (s: string) => void;
+  open: (s: string) => void;
+  visit: () => void;
+  visits: Visit[];
+  tasks: Task[];
+  plan: Row[];
+  first?: string;
+}) {
+  const red = stores.filter((s) => status(s, visits, tasks).p === 1).length,
+    late = tasks.filter((t) => !t.closed && t.date < today).length,
+    rows = plan.filter((r) => r.date === today);
+  const data = [
+    [
+      "Gestiones del mes",
+      32 + visits.reduce((n, v) => n + v.actions.length, 0),
+      "de 45 planificadas",
+      ClipboardCheck,
+      "Mi desempeño",
+    ],
+    [
+      "Personas alcanzadas",
+      86 +
+        new Set(
+          visits.flatMap((v) =>
+            v.actions.flatMap((a) => a.persons.map((p) => p.id)),
+          ),
+        ).size,
+      "colaboradores este mes",
+      Users,
+      "Mi desempeño",
+    ],
+    [
+      "Farmacias en foco rojo",
+      red,
+      "requieren una visita",
+      Flag,
+      "Focos rojos",
+    ],
+    [
+      "Pendientes vencidos",
+      late,
+      "requieren seguimiento",
+      Clock3,
+      "Mis pendientes",
+    ],
+  ] as const;
+  return (
+    <>
+      <section className="hero">
+        <div className="hero-art" />
+        <div className="hero-copy">
+          <div className="eyebrow hero-date">
+            <Sun size={15} /> Lunes, 23 de noviembre de 2026
+          </div>
+          <h1>¡Buen día, {first}!</h1>
+          <p>Este es el panorama de tu jornada en terreno.</p>
+          <button className="primary" onClick={visit}>
+            <Plus size={16} /> Registrar visita
+          </button>
+        </div>
+      </section>
+      <div className="section-title">
+        <h2>Resumen de actividad</h2>
+        <span className="period">
+          <CalendarDays size={14} /> Noviembre 2026
+        </span>
+      </div>
+      <div className="metric-grid">
+        {data.map(([label, n, sub, Icon, page], i) => (
+          <button className="metric" onClick={() => go(page)} key={label}>
+            <span className="metric-head">
+              <i className={"tile c" + i}>
+                <Icon size={18} />
+              </i>
+              {label}
+            </span>
+            <div className="metric-body">
+              <strong>{n}</strong>
+              <Spark i={i} />
+            </div>
+            <small>{sub}</small>
+          </button>
+        ))}
+      </div>
+      <div className="dashboard-bottom">
+        <section className="panel agenda">
+          <div className="panel-heading">
+            <div className="eyebrow">
+              <span className="dot" /> Mi planificación
+            </div>
+            <div className="heading-line">
+              <h2>
+                Actividades de hoy <em>{rows.length}</em>
+              </h2>
+              <button className="text-btn" onClick={() => go("Plan del mes")}>
+                Ver plan <ArrowUpRight size={15} />
+              </button>
+            </div>
+          </div>
+          {rows.map((r, i) => {
+            const s = stores.find((s) => s.id === r.store)!;
+            return (
+              <button key={i} className="activity" onClick={() => open(s.id)}>
+                <i
+                  className={
+                    "activity-icon " + (r.mode === "Online" ? "online" : "")
+                  }
+                >
+                  {r.mode === "Online" ? <Video /> : <Shop />}
+                </i>
+                <div>
+                  <small>
+                    {s.id} <b>·</b> {s.place}
+                  </small>
+                  <h3>{s.name}</h3>
+                  <span>
+                    <span
+                      className={
+                        "pill " + (r.mode === "Online" ? "violet" : "green")
+                      }
+                    >
+                      {r.mode}
+                    </span>
+                    <small>{r.type}</small>
+                  </span>
+                </div>
+                <ChevronRight size={16} />
+              </button>
+            );
+          })}
+          {!rows.length && (
+            <p className="empty">No hay actividades para hoy.</p>
+          )}
+        </section>
+        <div className="right-stack">
+          <section className="panel alerts">
+            <div className="eyebrow">
+              <span className="dot gold" /> Atención prioritaria
+            </div>
+            <h2>Alertas del día</h2>
+            <button onClick={() => go("Focos rojos")}>
+              <i className="tile c2">
+                <Flag size={17} />
+              </i>
+              <div>
+                <strong>{red} farmacias en foco rojo</strong>
+                <small>Revisa tu cartera prioritaria</small>
+              </div>
+              <ChevronRight size={15} />
+            </button>
+            <button onClick={() => go("Mis pendientes")}>
+              <i className="tile c3">
+                <Clock3 size={17} />
+              </i>
+              <div>
+                <strong>{late} seguimientos vencidos</strong>
+                <small>Retoma los pendientes</small>
+              </div>
+              <ChevronRight size={15} />
+            </button>
+          </section>
+          <button className="campaign" onClick={() => go("Ventas y concursos")}>
+            <div className="campaign-lines" />
+            <div className="eyebrow">Campaña vigente</div>
+            <h2>
+              Impulso G8 <ArrowUpRight size={19} />
+            </h2>
+            <p>Entrenamiento comercial · Noviembre</p>
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
