@@ -53,19 +53,32 @@ export default function Planning({
     (r) =>
       !week || (+r.date.slice(-2) >= start && +r.date.slice(-2) < start + 7),
   );
+  const [editing, setEditing] = useState<Row | null>(null);
+  function showForm(row: Row | null, suggestedStore = stores[0].id) {
+    setEditing(row);
+    D(row?.date ?? (suggestedStore === stores[0].id ? today : "2026-11-30"));
+    S(row?.store ?? suggestedStore);
+    M(row?.mode ?? "Presencial");
+    Y(row?.type ?? activities[0]);
+    T("Actividades");
+    A(true);
+    requestAnimationFrame(() => document.getElementById("plan-date")?.focus());
+  }
   function save() {
     if (!date.startsWith("2026-11"))
       return notify("Selecciona una fecha de noviembre.");
-    if (plan.some((r) => r.store === store && r.date === date))
+    const remaining = plan.filter((r) => !editing || r.store !== editing.store || r.date !== editing.date);
+    if (remaining.some((r) => r.store === store && r.date === date))
       return notify("Esta farmacia ya está planificada para esa fecha.");
     setPlan(
-      [...plan, { store, date, mode, type }].sort((a, b) =>
+      [...remaining, { store, date, mode, type }].sort((a, b) =>
         a.date.localeCompare(b.date),
       ),
     );
     publish(false);
     A(false);
-    notify("Actividad agregada al borrador.");
+    notify(editing ? "Actividad actualizada en el borrador." : "Actividad agregada al borrador.");
+    setEditing(null);
   }
   return (
     <>
@@ -84,7 +97,7 @@ export default function Planning({
           <h2>
             <CalendarDays size={20} /> Noviembre 2026
           </h2>
-          <button className="primary" onClick={() => A(!add)}>
+          <button className="primary" onClick={() => showForm(null)}>
             <Plus size={15} /> Actividad
           </button>
         </div>
@@ -103,11 +116,15 @@ export default function Planning({
         </p>
         {add && (
           <div className="person form-stack">
+            <h3>{editing ? "Editar actividad" : "Nueva actividad"}</h3>
             <div className="form-grid">
               <label>
                 Fecha tentativa
                 <input
+                  id="plan-date"
                   type="date"
+                  min="2026-11-01"
+                  max="2026-11-30"
                   value={date}
                   onChange={(e) => D(e.target.value)}
                 />
@@ -139,9 +156,12 @@ export default function Planning({
                 </select>
               </label>
             </div>
-            <button className="primary" onClick={save}>
-              Guardar actividad
-            </button>
+            <div className="actions">
+              <button className="secondary" onClick={() => A(false)}>Cancelar</button>
+              <button className="primary" onClick={save}>
+                {editing ? "Guardar cambios" : "Guardar actividad"}
+              </button>
+            </div>
           </div>
         )}
         <div className="tabs">
@@ -196,6 +216,7 @@ export default function Planning({
                       "Modalidad",
                       "Supervisor / jefatura",
                       "Fecha real",
+                      "Acción",
                     ].map((x) => (
                       <th key={x}>{x}</th>
                     ))}
@@ -226,6 +247,7 @@ export default function Planning({
                           <small>{s.boss}</small>
                         </td>
                         <td>{v ? dateText(v.date) : "Sin registrar"}</td>
+                        <td>{v ? "Registrada" : <button className="text-btn" aria-label={`Editar actividad de ${s.name} del ${dateText(r.date)}`} onClick={() => showForm(r)}>Editar</button>}</td>
                       </tr>
                     );
                   })}
@@ -325,10 +347,7 @@ export default function Planning({
                   <button
                     className="primary"
                     onClick={() => {
-                      S(s.id);
-                      D("2026-11-30");
-                      A(true);
-                      T("Actividades");
+                      showForm(null, s.id);
                     }}
                   >
                     Aceptar
