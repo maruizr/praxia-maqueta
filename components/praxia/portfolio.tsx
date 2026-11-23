@@ -1,5 +1,346 @@
-'use client'
-import {useState} from 'react';import {Search,ChevronRight,Plus,MapPin,Store as Shop} from 'lucide-react';import {stores,status,employees,dateText,type Store,type Visit,type Task,today} from './data';
-export function Portfolio({red,visits,tasks,open}:{red:boolean,visits:Visit[],tasks:Task[],open:(s:string)=>void}){const[q,Q]=useState(''),[p,P]=useState(red?'P1':''),[zone,Z]=useState(''),[sup,S]=useState(''),[reg,R]=useState('');const list=stores.filter(s=>(s.name+' '+s.id).toLowerCase().includes(q.toLowerCase())&&(!p||p==='P'+status(s,visits,tasks).p)&&(!zone||s.zone===zone)&&(!sup||sup===s.supervisor)&&(!reg||reg===s.region));return <><div className="page-intro"><div className="eyebrow">Trabajo en terreno</div><h1>Mi cartera</h1><p>Consulta tus farmacias y prioriza tu próxima visita.</p></div><section className="panel form-panel"><div className="filters"><label className="search"><Search size={16}/><input placeholder="Buscar nombre o código" aria-label="Buscar farmacia" value={q} onChange={e=>Q(e.target.value)}/></label>{[['Prioridad',p,P,['P1','P2','P3','P4']],['Zona',zone,Z,['Oriente','Centro','Sur']],['Supervisor',sup,S,['Daniela Rojas','Luis Tapia']],['Región',reg,R,['Metropolitana']]].map(([name,v,set,values]:any)=><select key={name} aria-label={name} value={v} onChange={e=>set(e.target.value)}><option value="">{name}</option>{values.map((x:string)=><option key={x}>{x}</option>)}</select>)}</div><small>{list.length} farmacias · Ruta 08</small>{list.map(s=><button key={s.id} className="simple-row" onClick={()=>open(s.id)}><i className="activity-icon"><Shop/></i><div><strong>{s.name}</strong><small>{s.id} · {s.place}</small></div><span className={'pill '+(status(s,visits,tasks).p===1?'red':'green')}>P{status(s,visits,tasks).p} {status(s,visits,tasks).p===1?'· Foco rojo':''}</span><ChevronRight size={16}/></button>)}{!list.length&&<p className="empty">No hay farmacias que coincidan con tus filtros.</p>}</section></>}
-export function Detail({s,visits,tasks,visit}:{s:Store,visits:Visit[],tasks:Task[],visit:()=>void}){const st=status(s,visits,tasks),[tab,T]=useState('Resumen');const own=visits.filter(v=>v.store===s.id);return <><div className="page-intro"><div className="eyebrow">{s.id} · {s.id.startsWith('CL')?'Corporativa':'Franquicia'}</div><div className="heading-line"><h1>{s.name}</h1><button className="primary" onClick={visit}><Plus size={16}/>Registrar visita</button></div><p><MapPin size={14}/> {s.address} · {s.place}</p></div><section className="panel form-panel"><div className="tabs">{['Resumen','Equipo','Pendientes','Historial'].map(x=><button key={x} className={x===tab?'selected':''} onClick={()=>T(x)}>{x}</button>)}</div>{tab==='Resumen'?<><span className={'pill '+(st.p===1?'red':'green')}>Prioridad P{st.p} · {st.p===1?'Foco rojo':st.p===2?'Atrasada':st.p===3?'Seguimiento programado':'Al día'}</span><dl className="facts">{Object.entries({'Zona':s.zone,'Región':s.region,'Supervisor':s.supervisor,'Jefe comercial':s.boss,'Nutricionista':'Camila Morales','Frecuencia esperada':s.freq+' visita mensual','Visitas realizadas este mes':st.count,'Última visita presencial':dateText(st.last),'Última capacitación':dateText(st.train)}).map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl></>:tab==='Equipo'?<><h3>Dotación · {employees(s.id).length} colaboradores</h3>{employees(s.id).map((p,i)=><div className="simple-row" key={p.id}><div><strong>{p.name}</strong><small>{p.job} · {p.id}</small></div><span className="pill green">{i<2||own.some(v=>v.actions.some(a=>a.persons.some(x=>x.id===p.id&&x.result==='Capacitado')))?'Capacitado':'Sin capacitación'}</span></div>)}</>:tab==='Pendientes'?<>{tasks.filter(t=>t.store===s.id&&!t.closed).map(t=><p key={t.id}>{t.name} · {t.kind} · {dateText(t.date)}</p>)}{!tasks.some(t=>t.store===s.id&&!t.closed)&&<p className="empty">Sin pendientes abiertos.</p>}</>:<>{own.map(v=><details open key={v.id}><summary>{dateText(v.date)} · {v.mode} · {v.author}</summary>{v.actions.map((a,i)=><div className="person" key={i}><h3>{i+1}. {a.type}</h3>{a.persons.map(p=><p key={p.id}>{p.name} · {p.topics.join(', ')} · {p.result} {p.note}</p>)}<small>{a.note} {a.file}</small></div>)}</details>)}<details><summary>{dateText(s.last)} · Presencial · Francisca Díaz</summary><p>Capacitación · {employees(s.id)[0].name} · Vitamina C G8 · Capacitado</p></details></>}</section></>}
-export function Tasks({tasks,close,open}:{tasks:Task[],close:(s:string)=>void,open:(s:string)=>void}){const [tab,T]=useState('Vencidos'),list=tasks.filter(t=>tab==='Cerrados'?t.closed:!t.closed&&(tab==='Vencidos'?t.date<today:tab==='Esta semana'?t.date>=today&&t.date<='2026-11-29':t.date>'2026-11-29'));return <><div className="page-intro"><div className="eyebrow">Seguimiento individual</div><h1>Mis pendientes</h1><p>Revisa los compromisos de cada colaborador.</p></div><div className="panel form-panel"><div className="tabs">{['Vencidos','Esta semana','Próximos','Cerrados'].map(x=><button key={x} className={x===tab?'selected':''} onClick={()=>T(x)}>{x}</button>)}</div>{list.map(t=><div key={t.id} className="simple-row"><div><strong>{t.name}</strong><small>{t.kind} · {dateText(t.date)}</small><button className="text-btn" onClick={()=>open(t.store)}>{stores.find(s=>s.id===t.store)?.name}</button></div><button className="secondary" onClick={()=>close(t.id)}>{t.closed?'Reabrir':'Marcar resuelto'}</button></div>)}{!list.length&&<p className="empty">No tienes pendientes en esta sección.</p>}</div></>}
+"use client";
+import { useState } from "react";
+import { useSettings } from "./settings";
+import {
+  Search,
+  ChevronRight,
+  Plus,
+  MapPin,
+  Store as Shop,
+} from "lucide-react";
+import {
+  stores,
+  status,
+  employees,
+  dateText,
+  type Store,
+  type Visit,
+  type Task,
+  today,
+} from "./data";
+export function Portfolio({
+  red,
+  visits,
+  tasks,
+  open,
+}: {
+  red: boolean;
+  visits: Visit[];
+  tasks: Task[];
+  open: (s: string) => void;
+}) {
+  const [q, Q] = useState(""),
+    [p, P] = useState(red ? "P1" : ""),
+    [zone, Z] = useState(""),
+    [sup, S] = useState(""),
+    [reg, R] = useState("");
+  const settings = useSettings();
+  const list = stores
+    .filter((s) => settings.owner(s.id) === "Camila Morales")
+    .map((s) => ({ ...s, freq: settings.frequency[s.id] || s.freq }))
+    .filter(
+      (s) =>
+        (s.name + " " + s.id).toLowerCase().includes(q.toLowerCase()) &&
+        (!p || p === "P" + status(s, visits, tasks).p) &&
+        (!zone || s.zone === zone) &&
+        (!sup || sup === s.supervisor) &&
+        (!reg || reg === s.region),
+    );
+  return (
+    <>
+      <div className="page-intro">
+        <div className="eyebrow">Trabajo en terreno</div>
+        <h1>Mi cartera</h1>
+        <p>Consulta tus farmacias y prioriza tu próxima visita.</p>
+      </div>
+      <section className="panel form-panel">
+        <div className="filters">
+          <label className="search">
+            <Search size={16} />
+            <input
+              placeholder="Buscar nombre o código"
+              aria-label="Buscar farmacia"
+              value={q}
+              onChange={(e) => Q(e.target.value)}
+            />
+          </label>
+          {[
+            ["Prioridad", p, P, ["P1", "P2", "P3", "P4"]],
+            ["Zona", zone, Z, ["Oriente", "Centro", "Sur"]],
+            ["Supervisor", sup, S, ["Daniela Rojas", "Luis Tapia"]],
+            ["Región", reg, R, ["Metropolitana"]],
+          ].map(([name, v, set, values]: any) => (
+            <select
+              key={name}
+              aria-label={name}
+              value={v}
+              onChange={(e) => set(e.target.value)}
+            >
+              <option value="">{name}</option>
+              {values.map((x: string) => (
+                <option key={x}>{x}</option>
+              ))}
+            </select>
+          ))}
+        </div>
+        <small>{list.length} farmacias · Ruta 08</small>
+        {list.map((s) => (
+          <button key={s.id} className="simple-row" onClick={() => open(s.id)}>
+            <i className="activity-icon">
+              <Shop />
+            </i>
+            <div>
+              <strong>{s.name}</strong>
+              <small>
+                {s.id} · {s.place}
+              </small>
+            </div>
+            <span
+              className={
+                "pill " + (status(s, visits, tasks).p === 1 ? "red" : "green")
+              }
+            >
+              P{status(s, visits, tasks).p}{" "}
+              {status(s, visits, tasks).p === 1 ? "· Foco rojo" : ""}
+            </span>
+            <ChevronRight size={16} />
+          </button>
+        ))}
+        {!list.length && (
+          <p className="empty">
+            No hay farmacias que coincidan con tus filtros.
+          </p>
+        )}
+      </section>
+    </>
+  );
+}
+export function Detail({
+  s,
+  visits,
+  tasks,
+  visit,
+}: {
+  s: Store;
+  visits: Visit[];
+  tasks: Task[];
+  visit: () => void;
+}) {
+  const settings = useSettings();
+  s = { ...s, freq: settings.frequency[s.id] || s.freq };
+  const st = status(s, visits, tasks),
+    [tab, T] = useState("Resumen");
+  const own = visits.filter((v) => v.store === s.id);
+  return (
+    <>
+      <div className="page-intro">
+        <div className="eyebrow">
+          {s.id} · {s.id.startsWith("CL") ? "Corporativa" : "Franquicia"}
+        </div>
+        <div className="heading-line">
+          <h1>{s.name}</h1>
+          <button className="primary" onClick={visit}>
+            <Plus size={16} />
+            Registrar visita
+          </button>
+        </div>
+        <p>
+          <MapPin size={14} /> {s.address} · {s.place}
+        </p>
+      </div>
+      <section className="panel form-panel">
+        <div className="tabs">
+          {["Resumen", "Equipo", "Pendientes", "Historial"].map((x) => (
+            <button
+              key={x}
+              className={x === tab ? "selected" : ""}
+              onClick={() => T(x)}
+            >
+              {x}
+            </button>
+          ))}
+        </div>
+        {tab === "Resumen" ? (
+          <>
+            <span className={"pill " + (st.p === 1 ? "red" : "green")}>
+              Prioridad P{st.p} ·{" "}
+              {st.p === 1
+                ? "Foco rojo"
+                : st.p === 2
+                  ? "Atrasada"
+                  : st.p === 3
+                    ? "Seguimiento programado"
+                    : "Al día"}
+            </span>
+            <dl className="facts">
+              {Object.entries({
+                Zona: s.zone,
+                Región: s.region,
+                Supervisor: s.supervisor,
+                "Jefe comercial": s.boss,
+                Nutricionista: settings.owner(s.id),
+                "Frecuencia esperada": s.freq + " visita mensual",
+                "Visitas realizadas este mes": st.count,
+                "Última visita presencial": dateText(st.last),
+                "Última capacitación": dateText(st.train),
+              }).map(([k, v]) => (
+                <div key={k}>
+                  <dt>{k}</dt>
+                  <dd>{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </>
+        ) : tab === "Equipo" ? (
+          <>
+            <h3>Dotación · {employees(s.id).length} colaboradores</h3>
+            {employees(s.id).map((p, i) => (
+              <div className="simple-row" key={p.id}>
+                <div>
+                  <strong>{p.name}</strong>
+                  <small>
+                    {p.job} · {p.id}
+                  </small>
+                </div>
+                <span className="pill green">
+                  {i < 2 ||
+                  own.some((v) =>
+                    v.actions.some((a) =>
+                      a.persons.some(
+                        (x) => x.id === p.id && x.result === "Capacitado",
+                      ),
+                    ),
+                  )
+                    ? "Capacitado"
+                    : "Sin capacitación"}
+                </span>
+              </div>
+            ))}
+          </>
+        ) : tab === "Pendientes" ? (
+          <>
+            {tasks
+              .filter((t) => t.store === s.id && !t.closed)
+              .map((t) => (
+                <p key={t.id}>
+                  {t.name} · {t.kind} · {dateText(t.date)}
+                </p>
+              ))}
+            {!tasks.some((t) => t.store === s.id && !t.closed) && (
+              <p className="empty">Sin pendientes abiertos.</p>
+            )}
+          </>
+        ) : (
+          <>
+            {own.map((v) => (
+              <details open key={v.id}>
+                <summary>
+                  {dateText(v.date)} · {v.mode} · {v.author}
+                </summary>
+                {v.actions.map((a, i) => (
+                  <div className="person" key={i}>
+                    <h3>
+                      {i + 1}. {a.type}
+                    </h3>
+                    {a.persons.map((p) => (
+                      <p key={p.id}>
+                        {p.name} · {p.topics.join(", ")} · {p.result} {p.note}
+                      </p>
+                    ))}
+                    <small>{a.note}</small>
+                    {a.attachment && (
+                      <button
+                        className="text-btn"
+                        onClick={() => {
+                          const url = URL.createObjectURL(a.attachment!);
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.download = a.file;
+                          link.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        }}
+                      >
+                        Descargar evidencia · {a.file}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </details>
+            ))}
+            <details>
+              <summary>
+                {dateText(s.last)} · Presencial · Francisca Díaz
+              </summary>
+              <p>
+                Capacitación · {employees(s.id)[0].name} · Vitamina C G8 ·
+                Capacitado
+              </p>
+            </details>
+          </>
+        )}
+      </section>
+    </>
+  );
+}
+export function Tasks({
+  tasks,
+  close,
+  open,
+}: {
+  tasks: Task[];
+  close: (s: string) => void;
+  open: (s: string) => void;
+}) {
+  const [tab, T] = useState("Vencidos"),
+    list = tasks.filter((t) =>
+      tab === "Cerrados"
+        ? t.closed
+        : !t.closed &&
+          (tab === "Vencidos"
+            ? t.date < today
+            : tab === "Esta semana"
+              ? t.date >= today && t.date <= "2026-11-29"
+              : t.date > "2026-11-29"),
+    );
+  return (
+    <>
+      <div className="page-intro">
+        <div className="eyebrow">Seguimiento individual</div>
+        <h1>Mis pendientes</h1>
+        <p>Revisa los compromisos de cada colaborador.</p>
+      </div>
+      <div className="panel form-panel">
+        <div className="tabs">
+          {["Vencidos", "Esta semana", "Próximos", "Cerrados"].map((x) => (
+            <button
+              key={x}
+              className={x === tab ? "selected" : ""}
+              onClick={() => T(x)}
+            >
+              {x}
+            </button>
+          ))}
+        </div>
+        {list.map((t) => (
+          <div key={t.id} className="simple-row">
+            <div>
+              <strong>{t.name}</strong>
+              <small>
+                {t.kind} · {dateText(t.date)}
+              </small>
+              <button className="text-btn" onClick={() => open(t.store)}>
+                {stores.find((s) => s.id === t.store)?.name}
+              </button>
+            </div>
+            <button className="secondary" onClick={() => close(t.id)}>
+              {t.closed ? "Reabrir" : "Marcar resuelto"}
+            </button>
+          </div>
+        ))}
+        {!list.length && (
+          <p className="empty">No tienes pendientes en esta sección.</p>
+        )}
+      </div>
+    </>
+  );
+}
