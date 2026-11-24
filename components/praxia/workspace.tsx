@@ -30,6 +30,7 @@ import {
   LogOut,
 } from "lucide-react";
 import Dashboard from "./dashboard";
+import {Inventory,Satisfaction} from './commercial';
 import VisitForm from "./visit";
 import { Detail, Portfolio, Tasks } from "./portfolio";
 import Planning, { type Notice } from "./planning";
@@ -64,6 +65,7 @@ const groups = [
       ["Simi Escuela", GraduationCap],
       ["Ventas y concursos", Trophy],
       ["Inventario G8", Package],
+      ["Encuesta de satisfacción", ListChecks],
     ],
   },
 ] as const;
@@ -221,8 +223,9 @@ function App({ ingreso }: { ingreso: boolean }) {
   }, []);
   async function save(v: Visit) {
     v.queued = off;
+    v.syncState=off?'Pendiente':'Sincronizado';
     try {
-      if (off) {
+      {
         const db = await queueDB();
         await new Promise((res, rej) => {
           const tx = db.transaction("visitas", "readwrite");
@@ -244,27 +247,17 @@ function App({ ingreso }: { ingreso: boolean }) {
       notify("No se pudo guardar la visita. Intenta nuevamente.");
     }
   }
-  async function sync() {
-    if (off) return;
-    try {
-      const db = await queueDB();
-      const tx = db.transaction("visitas", "readwrite");
-      tx.objectStore("visitas").clear();
-      tx.oncomplete = () => {
-        V(visits.map((v) => ({ ...v, queued: false })));
-        db.close();
-        notify("Cola sincronizada en esta demostración.");
-      };
-    } catch {
-      notify("No se pudo procesar la cola.");
-    }
-  }
+  const [scenario,setScenario]=useState('Normal'),[syncing,setSyncing]=useState(false);
+  const queue=visits.filter(v=>v.queued&&v.author===who);
+  async function updateQueue(rows:Visit[]){const db=await queueDB();try{await new Promise<void>((ok,no)=>{const tx=db.transaction('visitas','readwrite');for(const row of rows)tx.objectStore('visitas').put(row);tx.oncomplete=()=>ok();tx.onerror=()=>no(tx.error);tx.onabort=()=>no(tx.error)})}finally{db.close()}V(prev=>prev.map(v=>rows.find(r=>r.id===v.id)??v))}
+  async function sync(){if(off||syncing)return;const pending=queue.filter(v=>v.syncState!=='Conflicto');if(!pending.length)return;setSyncing(true);try{V(prev=>prev.map(v=>pending.some(p=>p.id===v.id)?{...v,syncState:'Sincronizando'}:v));await new Promise(ok=>setTimeout(ok,450));await updateQueue(pending.map(v=>({...v,queued:scenario!=='Normal',syncState:scenario==='Normal'?'Sincronizado':scenario==='Error de conexión'?'Error':'Conflicto'})));notify(scenario==='Normal'?'Registros sincronizados en la maqueta.':'Registros conservados. Revisa la cola para continuar.');setScenario('Normal')}catch{V(prev=>prev.map(v=>pending.some(p=>p.id===v.id)?{...v,syncState:'Error'}:v));notify('No se pudo actualizar la cola. Tus registros se conservan.')}finally{setSyncing(false)}}
+  async function resolve(v:Visit,remote:boolean){if(off)return;const remoteMode=v.mode==='Presencial'?'Online':'Presencial';try{await updateQueue([{...v,mode:remote?remoteMode:v.mode,queued:false,syncState:'Sincronizado',resolution:{device:v.mode,remote:remoteMode,choice:remote?'Servidor':'Dispositivo'}}]);notify('Conflicto resuelto. Ambas versiones de la modalidad quedan en el historial.')}catch{notify('No se pudo confirmar. El conflicto sigue abierto.')}}
   const allVisits:Visit[]=[...visits,...settings.batches.filter(b=>b.source==='Histórico de visitas').flatMap(b=>b.rows.map(([store,date,mode,author],i)=>({id:'historico-'+i,store,date,mode,author,actions:[],other:'Histórico importado',queued:false})))];
   const rows = useTeamSummary(allVisits, tasks, plans);
   const [adminTab, setAdminTab] = useState('Equipo');
   const homeLabel = role === roles[0] ? 'Inicio del día' : role === 'Administrador' ? 'Panel de administración' : 'Panel de jefatura';
   function manage(tab:string) { setAdminTab(tab); go('Administración'); }
-  const count = visits.filter((v) => v.queued).length;
+  const count = queue.length;
   return (
     <div className="shell">
       {mobile && (
@@ -410,11 +403,7 @@ function App({ ingreso }: { ingreso: boolean }) {
                       />{" "}
                       Simular sin conexión
                     </label>
-                    {count > 0 && (
-                      <button className="primary" disabled={off} onClick={sync}>
-                        Sincronizar maqueta
-                      </button>
-                    )}
+                    {queue.length>0&&<><label>Respuesta de prueba<select value={scenario} disabled={syncing} onChange={e=>setScenario(e.target.value)}><option>Normal</option><option>Error de conexión</option><option>Conflicto de modalidad</option></select></label>{queue.map(v=><div key={v.id}><strong>{v.store} · {v.date}</strong><small>{v.syncState||'Pendiente'}</small>{v.syncState==='Conflicto'&&<><p>Selecciona la modalidad correcta. Se conservarán ambas versiones.</p><button className="secondary" disabled={off} onClick={()=>resolve(v,false)}>Dispositivo: {v.mode}</button><button className="secondary" disabled={off} onClick={()=>resolve(v,true)}>Servidor de prueba: {v.mode==='Presencial'?'Online':'Presencial'}</button></>}</div>)}<button className="primary" disabled={off||syncing||queue.every(v=>v.syncState==='Conflicto')} onClick={sync}>{syncing?'Sincronizando…':'Sincronizar maqueta'}</button></>}
                   </>
                 ) : (
                   <>
@@ -465,11 +454,11 @@ function App({ ingreso }: { ingreso: boolean }) {
             />
           ) : page === "Mis pendientes" ? (
             <Tasks
-              tasks={tasks}
-              close={(id) =>
+              tasks={tasks.filter(t=>role==='Administrador'||settings.owner(t.store)===who)}
+              close={(id,closure) =>
                 T(
                   tasks.map((t) =>
-                    t.id === id ? { ...t, closed: !t.closed } : t,
+                    t.id === id ? { ...t, closed: !t.closed, closure } : t,
                   ),
                 )
               }
@@ -488,7 +477,7 @@ function App({ ingreso }: { ingreso: boolean }) {
               open={open}
               notify={notify}
             /></>
-          ) : page !== "Administración" ? (
+          ) : page === 'Inventario G8' ? <Inventory/> : page === 'Encuesta de satisfacción' ? <Satisfaction who={who} management={role==='Administrador'}/> : page !== "Administración" ? (
             <Resources
               key={page}
               page={page}

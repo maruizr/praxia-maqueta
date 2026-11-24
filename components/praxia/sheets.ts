@@ -1,0 +1,3 @@
+export const catalog:Record<string,string>={G8001:'Vitamina C G8',G8002:'Magnesio G8',G8003:'Omega 3 G8',G8004:'Zinc G8'};
+export async function exportSheet(name:string,headers:string[],rows:string[][]){const {default:write}=await import('write-excel-file/browser');await write([headers,...rows].map(row=>row.map(value=>({value,type:String})))).toFile(name+'.xlsx')}
+export async function readSheetText(file:File){if(!file.name.toLowerCase().endsWith('.xlsx'))return file.text();const {readSheet}=await import('read-excel-file/browser');const rows=await readSheet(file);return rows.map(r=>r.map(c=>`"${String(c instanceof Date?c.toISOString().slice(0,10):c??'').replace(/[\r\n]+/g,' ').replaceAll('"','""')}"`).join(';')).join('\n')}

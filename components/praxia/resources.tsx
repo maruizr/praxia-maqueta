@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { useSettings } from './settings';
 import { download } from './downloads';
+import {Contests} from './contests';
+import {exportSheet} from './sheets';
 import { exportCalendar } from "./export-calendar";
 import { Download, BookOpen, Plus } from "lucide-react";
 import { stores, status, seedTasks, dateText, type Visit } from "./data";
@@ -264,21 +266,12 @@ export function Resources({
             : "Avance de ventas y concursos vigentes de noviembre."}
         </p>
       </div>
-      {!inv && (
-        <section className="campaign large">
-          <div className="eyebrow">
-            Concurso vigente · Hasta el 30 de noviembre
-          </div>
-          <h2>Impulso G8</h2>
-          <p>
-            Meta de campaña: alcanzar un 25 % de participación en productos G8.
-          </p>
-        </section>
-      )}
+      <Contests items={settings.contests} set={settings.setContests} admin={management} who={who}/>
+      <p>Fuente comercial desactualizada. Último corte válido: 20 de noviembre de 2026.</p>
       <section className="panel form-panel">
         <div className="heading-line">
           <h2>{inv ? "Alertas de inventario" : "Ventas por farmacia"}</h2>
-          {!inv && exportable.length>0 && <button className="secondary" onClick={()=>download(new Blob(['\uFEFF'+[['Farmacia','Nombre','Venta mensual','Avance (%)','G8 (%)'].join(';'),...exportable.map(r=>[r.s.id,r.s.name,r.amount,r.goal,r.g8].join(';'))].join('\r\n')],{type:'text/csv;charset=utf-8'}),'ventas-autorizadas.csv')}><Download size={15}/>Exportar ventas ({exportable.length})</button>}
+          {!inv && exportable.length>0 && <button className="secondary" onClick={()=>exportSheet('ventas-autorizadas',['Farmacia','Nombre','Venta mensual','Avance (%)','G8 (%)','Corte'],exportable.map(r=>[r.s.id,r.s.name,String(r.amount),String(r.goal),String(r.g8),'2026-11-20']))}><Download size={15}/>Exportar ventas ({exportable.length})</button>}
           {inv && (
             <select
               aria-label="Filtrar por stock"
