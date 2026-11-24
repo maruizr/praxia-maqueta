@@ -1,5 +1,7 @@
 "use client";
 import { useState } from "react";
+import {ReviewHistory} from './field-review';
+import {exportSheet} from './sheets';
 import { useSettings } from "./settings";
 import {
   Search,
@@ -38,7 +40,7 @@ export function Portfolio({
   const settings = useSettings();
   const list = stores
     .filter((s) => !owner || settings.owner(s.id) === owner)
-    .map((s) => ({ ...s, school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq }))
+    .map((s) => ({ ...s, pendingTraining:settings.pendingTraining(s.id),school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq }))
     .filter(
       (s) =>
         (s.name + " " + s.id).toLowerCase().includes(q.toLowerCase()) &&
@@ -84,7 +86,7 @@ export function Portfolio({
             </select>
           ))}
         </div>
-        <small>{list.length} farmacias · {owner || 'Todo el equipo'}</small>
+        <div className="heading-line"><small>{list.length} farmacias · {owner || 'Todo el equipo'}</small><button className="secondary" disabled={!list.length} onClick={()=>exportSheet('cartera-filtrada',['Código','Farmacia','Responsable','Prioridad','Última presencial','Última capacitación','Visitas del mes','Frecuencia'],list.map(s=>{const r=status(s,visits,tasks);return [s.id,s.name,settings.owner(s.id),'P'+r.p,r.last,r.train,String(r.count),String(s.freq)]}))}>Exportar a Excel</button></div>
         {list.map((s) => (
           <button key={s.id} className="simple-row" onClick={() => open(s.id)}>
             <i className="activity-icon">
@@ -117,19 +119,20 @@ export function Portfolio({
   );
 }
 export function Detail({
-  s,
+  history,audit,s,
   visits,
   tasks,
   visit,
 }: {
-  s: Store;
+  history:Visit[]; audit:(v:Visit)=>React.ReactNode;
+  s: Store & {pendingTraining?:boolean};
   visits: Visit[];
   tasks: Task[];
   visit: () => void;
 }) {
   const settings = useSettings();
   const employees=settings.roster;
-  s = { ...s, school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq };
+  s = { ...s, pendingTraining:settings.pendingTraining(s.id),school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq };
   const st = status(s, visits, tasks),
     [tab, T] = useState("Resumen");
   const own = visits.filter((v) => v.store === s.id);
@@ -174,6 +177,7 @@ export function Detail({
                     ? "Seguimiento programado"
                     : "Al día"}
             </span>
+            {st.p===1&&<p>Motivos: {[st.last<'2026-09-23'&&'sin visita presencial reciente',st.train<'2026-09-23'&&'sin capacitación reciente',s.school<'2026-07-23'&&'asistencia a Simi Escuela atrasada',s.pendingTraining&&'nuevo ingreso con programa pendiente'].filter(Boolean).join(' · ')}.</p>}
             <dl className="facts">
               {Object.entries({
                 Zona: s.zone,
@@ -203,7 +207,7 @@ export function Detail({
                 <div>
                   <strong>{p.name}</strong>
                   <small>
-                    {p.job} · {p.id}
+                    {p.job} · {p.id}{settings.students.some(x=>x.key===p.id&&x.program.some(stage=>!x.events.some(e=>e.stage===stage&&e.result==='Completada')))?' · Nuevo ingreso':''}
                   </small>
                 </div>
                 <span className="pill green">
@@ -236,11 +240,12 @@ export function Detail({
           </>
         ) : (
           <>
-            {own.map((v) => (
+            {history.filter(v=>v.store===s.id).map((v) => (
               <details open key={v.id}>
                 <summary>
                   {dateText(v.date)} · {v.mode}{v.mode==='Otros'&&v.other?' ('+v.other+')':''} · {v.author} · {v.id.startsWith('historico-')?'Histórico migrado':'Praxia'} · {v.syncState||(v.queued?'Pendiente de sincronizar':'Sincronizado')}
                 </summary>
+                {audit(v)}<ReviewHistory rows={v.reviews||[]}/>
                 {v.resolution&&<p>Conflicto resuelto: dispositivo ({v.resolution.device}), servidor de prueba ({v.resolution.remote}). Se eligió: {v.resolution.choice}.</p>}
                 {v.attempt&&<p>Intento sin atención: {v.attempt}</p>}{v.contingency&&<p>Registro de contingencia</p>}{v.planned!==undefined&&<small>{v.planned?'Planificada':'No planificada'}</small>}
                 {v.actions.map((a, i) => (

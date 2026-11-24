@@ -340,7 +340,7 @@ export default function Planning({
               />
             </label>
             {rejected.length>0 && <details><summary>Sugerencias rechazadas ({rejected.length})</summary>{rejected.map(([id,motivo])=><p key={id}>{stores.find(s=>s.id===id)?.name} · {motivo}</p>)}</details>}
-            {cartera.map(s=>({...s,school:settings.school(s.id),freq:settings.frequency[s.id]||s.freq}))
+            {cartera.map(s=>({...s,pendingTraining:settings.pendingTraining(s.id),school:settings.school(s.id),freq:settings.frequency[s.id]||s.freq}))
               .filter(
                 (s) =>
                   [

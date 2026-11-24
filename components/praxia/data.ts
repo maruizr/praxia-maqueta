@@ -150,6 +150,7 @@ export const employees = (id: string) => {
   }));
 };
 export type Person = {
+  provisional?:boolean; home?:string; originalId?:string;
   id: string;
   name: string;
   job: string;
@@ -166,7 +167,10 @@ export type Action = {
   file: string;
   attachment?: File;
 };
+export type Revision={by:string;at:string;reason:string;operation:string;before:string;after:string};
 export type Visit = {
+  reviews?:import('./field-review').Review[];
+  voided?:boolean; audit?:Revision[];
   id: string;
   store: string;
   date: string;
@@ -218,7 +222,7 @@ export const seedTasks: Task[] = stores
     ][i],
     closed: false,
   }));
-export function status(s: Store, v: Visit[], tasks: Task[]) {
+export function status(s: Store & {pendingTraining?:boolean},  v: Visit[], tasks: Task[]) {
   const vs = v.filter((x) => x.store === s.id && !x.attempt);
   const last = [
     s.last,
@@ -249,7 +253,7 @@ export function status(s: Store, v: Visit[], tasks: Task[]) {
     train,
     count,
     p:
-      last < "2026-09-23" || train < "2026-09-23" || s.school < "2026-07-23"
+      s.pendingTraining || last < "2026-09-23" || train < "2026-09-23" || s.school < "2026-07-23"
         ? 1
         : count < s.freq || own.some((t) => t.date < today)
           ? 2

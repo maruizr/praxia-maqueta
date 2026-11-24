@@ -30,6 +30,8 @@ import {
   LogOut,
 } from "lucide-react";
 import Dashboard from "./dashboard";
+import {Onboarding} from './onboarding';
+import {Reconciliation,VisitAudit} from './traceability';
 import {Inventory,Satisfaction} from './commercial';
 import VisitForm from "./visit";
 import { Detail, Portfolio, Tasks } from "./portfolio";
@@ -63,6 +65,7 @@ const groups = [
     title: "Recursos comerciales",
     items: [
       ["Simi Escuela", GraduationCap],
+      ['Nuevos ingresos',UserRound],
       ["Ventas y concursos", Trophy],
       ["Inventario G8", Package],
       ["Encuesta de satisfacción", ListChecks],
@@ -110,7 +113,7 @@ function App({ ingreso }: { ingreso: boolean }) {
     [network, N] = useState(true),
     [id, S] = useState(stores[0].id),
     [visits, V] = useState<Visit[]>([]),
-    [tasks, T] = useState<Task[]>(seedTasks),
+    [taskRecords, T] = useState<Task[]>(seedTasks),
     [plans, setPlans] = useState(demoPlans),
     [selectedPlanner, selectPlanner] = useState(team[0]),
     [toast, A] = useState(""),
@@ -140,6 +143,7 @@ function App({ ingreso }: { ingreso: boolean }) {
       })),
     ),
     [permission, Q] = useState(false);
+  const tasks=taskRecords.filter(t=>!visits.some(v=>v.voided&&t.id.startsWith(v.id+'-')));
   const who = names[roles.indexOf(role)],
     off = offline || !network,
     late = tasks.filter((t) => !t.closed && t.date < today).length,
@@ -172,7 +176,7 @@ function App({ ingreso }: { ingreso: boolean }) {
       a.persons
         .filter((p) => p.result === "Requiere seguimiento")
         .map((p) => ({
-          id: v.id + "-" + i + "-" + p.id,
+          id: v.id + "-" + i + "-" + (p.originalId||p.id),
           store: v.store,
           name: p.name,
           kind: p.kind,
@@ -236,7 +240,7 @@ function App({ ingreso }: { ingreso: boolean }) {
         db.close();
       }
       V([v, ...visits]);
-      T([...pend(v), ...tasks]);
+      T(prev=>[...pend(v), ...prev]);
       open(v.store);
       notify(
         off
@@ -249,10 +253,14 @@ function App({ ingreso }: { ingreso: boolean }) {
   }
   const [scenario,setScenario]=useState('Normal'),[syncing,setSyncing]=useState(false);
   const queue=visits.filter(v=>v.queued&&v.author===who);
-  async function updateQueue(rows:Visit[]){const db=await queueDB();try{await new Promise<void>((ok,no)=>{const tx=db.transaction('visitas','readwrite');for(const row of rows)tx.objectStore('visitas').put(row);tx.oncomplete=()=>ok();tx.onerror=()=>no(tx.error);tx.onabort=()=>no(tx.error)})}finally{db.close()}V(prev=>prev.map(v=>rows.find(r=>r.id===v.id)??v))}
+  async function updateQueue(rows:Visit[]){const db=await queueDB();try{await new Promise<void>((ok,no)=>{const tx=db.transaction('visitas','readwrite');for(const row of rows)tx.objectStore('visitas').put(row);tx.oncomplete=()=>ok();tx.onerror=()=>no(tx.error);tx.onabort=()=>no(tx.error)})}finally{db.close()}V(prev=>[...rows,...prev.filter(v=>!rows.some(r=>r.id===v.id))])}
   async function sync(){if(off||syncing)return;const pending=queue.filter(v=>v.syncState!=='Conflicto');if(!pending.length)return;setSyncing(true);try{V(prev=>prev.map(v=>pending.some(p=>p.id===v.id)?{...v,syncState:'Sincronizando'}:v));await new Promise(ok=>setTimeout(ok,450));await updateQueue(pending.map(v=>({...v,queued:scenario!=='Normal',syncState:scenario==='Normal'?'Sincronizado':scenario==='Error de conexión'?'Error':'Conflicto'})));notify(scenario==='Normal'?'Registros sincronizados en la maqueta.':'Registros conservados. Revisa la cola para continuar.');setScenario('Normal')}catch{V(prev=>prev.map(v=>pending.some(p=>p.id===v.id)?{...v,syncState:'Error'}:v));notify('No se pudo actualizar la cola. Tus registros se conservan.')}finally{setSyncing(false)}}
   async function resolve(v:Visit,remote:boolean){if(off)return;const remoteMode=v.mode==='Presencial'?'Online':'Presencial';try{await updateQueue([{...v,mode:remote?remoteMode:v.mode,queued:false,syncState:'Sincronizado',resolution:{device:v.mode,remote:remoteMode,choice:remote?'Servidor':'Dispositivo'}}]);notify('Conflicto resuelto. Ambas versiones de la modalidad quedan en el historial.')}catch{notify('No se pudo confirmar. El conflicto sigue abierto.')}}
-  const allVisits:Visit[]=[...visits,...settings.batches.filter(b=>b.source==='Histórico de visitas').flatMap(b=>b.rows.map(([store,date,mode,author],i)=>({id:'historico-'+i,store,date,mode,author,actions:[],other:'Histórico importado',queued:false})))];
+  const importedVisits:Visit[]=[...settings.batches.filter(b=>b.source==='Histórico de visitas').flatMap(b=>b.rows.map(([store,date,mode,author],i)=>({id:'historico-'+i,store,date,mode,author,actions:[],other:'Histórico importado',queued:false})))];
+  const history=[...visits,...importedVisits.filter(v=>!visits.some(x=>x.id===v.id))];
+  const allVisits=history.filter(v=>!v.voided);
+  async function revise(v:Visit,c:import('./traceability').Change){const admin=role==='Administrador';if(!c.reason||(!admin&&(who!==v.author||v.voided)))return;const next={...v};if(c.operation==='Corregir'){if(!c.date||c.date>today||(c.mode==='Otros'&&!c.other)){notify('Revisa la fecha y la descripción de la modalidad.');return}Object.assign(next,{date:c.date,mode:c.mode,other:c.other})}else next.voided=c.operation==='Anular';const describe=(r:Visit)=>[r.date,r.mode,r.other,r.voided?'Anulada':'Vigente'].filter(Boolean).join(' · ');next.audit=[...(v.audit||[]),{by:who,at:new Date().toISOString(),operation:c.operation,reason:c.reason,before:describe(v),after:describe(next)}];try{await updateQueue([next]);notify('Cambio registrado en el historial.')}catch{notify('No se guardó el cambio. Intenta nuevamente.')}}
+  async function reconcile(p:import('./data').Person,target:{id:string;name:string;job:string},reason:string){if(role!=='Administrador'||!reason.trim())return;const revised=history.filter(v=>v.actions.some(a=>a.persons.some(x=>x.id===p.id))).map(v=>({...v,actions:v.actions.map(a=>({...a,persons:a.persons.map(x=>x.id===p.id?{...x,...target,provisional:false,originalId:x.id}:x)})),audit:[...(v.audit||[]),{by:who,at:new Date().toISOString(),reason,operation:'Conciliación',before:p.name+' · '+p.id,after:target.name+' · '+target.id}]}));try{await updateQueue(revised);const from=settings.students.find(x=>x.key===p.id),dest=settings.students.find(x=>x.key===target.id);if(from)settings.setStudents([...settings.students.filter(x=>x!==from&&x!==dest),{...(dest||from),key:target.id,name:target.name,events:[...(dest?.events||[]),...from.events],moves:[...(dest?.moves||[]),...from.moves]}]);T(prev=>prev.map(t=>t.id.endsWith('-'+p.id)?{...t,name:target.name}:t));notify('Identidad conciliada. Alcance recalculado.')}catch{notify('No se aplicó el vínculo. Intenta nuevamente.')}}
   const rows = useTeamSummary(allVisits, tasks, plans);
   const [adminTab, setAdminTab] = useState('Equipo');
   const homeLabel = role === roles[0] ? 'Inicio del día' : role === 'Administrador' ? 'Panel de administración' : 'Panel de jefatura';
@@ -299,6 +307,7 @@ function App({ ingreso }: { ingreso: boolean }) {
               ))}
             </div>
           ))}
+          {role==='Administrador'&&<button className="nav-link" onClick={()=>go('Conciliación')}><UserRound size={18}/>Conciliación</button>}
           {role !== roles[0] && (
             <button className="nav-link" onClick={() => go("Administración")}>
               <SlidersHorizontal size={18} />
@@ -426,8 +435,8 @@ function App({ ingreso }: { ingreso: boolean }) {
               go={go}
               open={open}
               visit={newVisit}
-              visits={allVisits}
-              tasks={tasks}
+              visits={allVisits.filter(v=>settings.owner(v.store)===who)}
+              tasks={tasks.filter(t=>settings.owner(t.store)===who)}
               plan={plan}
             />
           ) : page === "Registrar visita" ? (
@@ -447,6 +456,7 @@ function App({ ingreso }: { ingreso: boolean }) {
             />
           ) : page === "Ficha de farmacia" ? (
             <Detail
+              history={history} audit={v=><VisitAudit visit={v} admin={role==='Administrador'} who={who} apply={revise}/>}
               s={stores.find((s) => s.id === id)!}
               visits={allVisits}
               tasks={tasks}
@@ -457,7 +467,7 @@ function App({ ingreso }: { ingreso: boolean }) {
               tasks={tasks.filter(t=>role==='Administrador'||settings.owner(t.store)===who)}
               close={(id,closure) =>
                 T(
-                  tasks.map((t) =>
+                  taskRecords.map((t) =>
                     t.id === id ? { ...t, closed: !t.closed, closure } : t,
                   ),
                 )
@@ -477,11 +487,11 @@ function App({ ingreso }: { ingreso: boolean }) {
               open={open}
               notify={notify}
             /></>
-          ) : page === 'Inventario G8' ? <Inventory/> : page === 'Encuesta de satisfacción' ? <Satisfaction who={who} management={role==='Administrador'}/> : page !== "Administración" ? (
+          ) : page==='Nuevos ingresos'?<Onboarding who={who} admin={role==='Administrador'} visits={allVisits}/>:page==='Conciliación'&&role==='Administrador'?<Reconciliation visits={history} reconcile={reconcile}/>:page === 'Inventario G8' ? <Inventory/> : page === 'Encuesta de satisfacción' ? <Satisfaction who={who} management={role==='Administrador'}/> : page !== "Administración" ? (
             <Resources
               key={page}
               page={page}
-              visits={allVisits}
+              visits={role==='Administrador'?allVisits:allVisits.filter(v=>v.author===who)}
               open={open}
               sessions={sessions}
               setSessions={U}
