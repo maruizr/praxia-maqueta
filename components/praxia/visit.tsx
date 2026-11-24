@@ -71,7 +71,7 @@ export default function VisitForm({
   function submit() {
     const bad = actions.findIndex(
       (a) =>
-        !a.persons.length ||
+        (!a.persons.length && a.type !== "Reunión o coordinación") ||
         a.persons.some(
           (p) =>
             !p.topics.length ||
@@ -182,7 +182,7 @@ export default function VisitForm({
             ))}
           </select>
         </label>
-        <h3>Participantes y temas</h3>
+        <h3>Participantes y temas{act.type === "Reunión o coordinación" && <small> (opcional)</small>}</h3>
         <label>
           Agregar de la dotación
           <select
@@ -206,9 +206,9 @@ export default function VisitForm({
           <summary>Agregar colaborador de otra farmacia</summary>
           <div className="inline">
             <label>
-              Número de empleado
+              Farmacia y número de empleado
               <input
-                placeholder="Ej. 1005"
+                placeholder="Ej. CL2050-1012 o F1064-3"
                 value={extra}
                 onChange={(e) => X(e.target.value)}
               />
@@ -218,7 +218,12 @@ export default function VisitForm({
               onClick={() => {
                 const p = stores
                   .flatMap((s) => employees(s.id))
-                  .find((p) => p.id === extra || p.id.endsWith("-" + extra));
+                  .find(
+                    (p) =>
+                      p.id === extra.trim().toUpperCase() ||
+                      (!p.id.startsWith("F") &&
+                        p.id.endsWith("-" + extra.trim())),
+                  );
                 if (!p) return E("No se encontró ese número de empleado.");
                 add(p);
                 X("");

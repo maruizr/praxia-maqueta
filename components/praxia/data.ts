@@ -84,24 +84,71 @@ export const stores = Array.from({ length: team.length * 56 }, (_, index) => {
   };
 });
 export type Store = (typeof stores)[number];
-export const employees = (id: string) =>
-  [
-    "Valentina Soto",
-    "Felipe Muñoz",
-    "Antonia Reyes",
-    "Diego Silva",
-    "Josefina Díaz",
-  ].map((name, i) => ({
-    name,
-    id: id + "-" + (1000 + (storeIndex.get(id) ?? -1) * 5 + i),
-    job: [
-      "Química farmacéutica",
-      "Auxiliar de farmacia",
-      "Encargada",
-      "Auxiliar de farmacia",
-      "Auxiliar de farmacia",
-    ][i],
+const firstNames = [
+  "Valentina",
+  "Felipe",
+  "Antonia",
+  "Diego",
+  "Josefina",
+  "Matías",
+  "Catalina",
+  "Benjamín",
+  "Fernanda",
+  "Ignacio",
+  "Constanza",
+  "Tomás",
+  "Daniela",
+  "Joaquín",
+  "Camila",
+  "Sebastián",
+  "Martina",
+  "Vicente",
+  "Isidora",
+  "Cristóbal",
+];
+const lastNames = [
+  "Soto",
+  "Muñoz",
+  "Reyes",
+  "Silva",
+  "Díaz",
+  "Rojas",
+  "Contreras",
+  "Fuentes",
+  "Araya",
+  "Espinoza",
+  "Castillo",
+  "Pizarro",
+  "Vergara",
+  "Navarro",
+  "Carrasco",
+  "Sepúlveda",
+  "Morales",
+  "Tapia",
+  "Gallardo",
+  "Henríquez",
+];
+const jobs = [
+  "Química farmacéutica",
+  "Auxiliar de farmacia",
+  "Encargada",
+  "Auxiliar de farmacia",
+  "Auxiliar de farmacia",
+];
+// En franquicias el número de empleado es correlativo dentro de cada farmacia;
+// por eso el colaborador se identifica por farmacia + número.
+export const employees = (id: string) => {
+  const k = Math.max(
+    0,
+    storeIndex.get(id) ?? 0,
+  );
+  return jobs.map((job, i) => ({
+    name:
+      firstNames[(k * 3 + i * 7) % 20] + " " + lastNames[(k * 5 + i * 3) % 20],
+    id: id + "-" + (id.startsWith("F") ? i + 1 : 1000 + k * 5 + i),
+    job,
   }));
+};
 export type Person = {
   id: string;
   name: string;

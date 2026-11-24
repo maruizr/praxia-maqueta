@@ -38,13 +38,20 @@ export default function Admin({
 
     [info, A] = useState("Ventas"),
     [territory, Z] = useState("Oriente"),
-    [query, setQuery] = useState('');
+    [query, setQuery] = useState(''),
+[sub, B] = useState("Borrador quincenal"),
+    [draft, X] = useState<Record<string, string>>({}),
+    [from, Y] = useState("2026-12-01");
   function record(text: string) {
     R([...records, { tab, text, store, date, end }]);
     notify("Registro confirmado.");
   }
   const settings = useSettings(), users = team;
   const load = (u: string) => rows.find(r => r.name === u)?.total ?? 0;
+  const owner = (id:string) => draft[id] ?? settings.owner(id);
+  const moved = stores.filter(s => owner(s.id) !== settings.owner(s.id));
+  const orphan = moved.filter(s => !users.includes(owner(s.id)));
+  const affected = plan.filter(r => r.date >= from && moved.some(s=>s.id===r.store)).length;
   return (
     <>
       <div className="page-intro">
@@ -135,7 +142,110 @@ export default function Admin({
         ) : tab === "Asignaciones" ? (
           <>
             <details><summary>Consultar carteras y responsables</summary><label>Buscar por farmacia, código o responsable<input value={query} onChange={e=>setQuery(e.target.value)}/></label>{stores.filter(s=>(s.name+s.id+settings.owner(s.id)).toLowerCase().includes(query.trim().toLowerCase())).map(s=><div className="simple-row" key={s.id}><div><strong>{s.name}</strong><small>{s.id} · {settings.owner(s.id)}</small></div></div>)}{!stores.some(s=>(s.name+s.id+settings.owner(s.id)).toLowerCase().includes(query.trim().toLowerCase()))&&<p>Sin coincidencias.</p>}</details>
-            <h2>Borrador de asignación quincenal</h2>
+            <div className="tabs">
+              {["Borrador quincenal", "Cobertura temporal"].map((x) => (
+                <button
+                  key={x}
+                  className={x === sub ? "selected" : ""}
+                  onClick={() => B(x)}
+                >
+                  {x}
+                </button>
+              ))}
+            </div>
+            {sub === "Borrador quincenal" ? (
+              <>
+                <h2>Borrador de asignación quincenal</h2>
+                <p>
+                  Cartera de {team[0]} · Ruta 08. Cambia la responsable de las
+                  farmacias que se redistribuyen.
+                </p>
+                <div className="form-grid">
+                  {team.map((u) => (
+                    <div key={u} className="simple-row">
+                      <div>
+                        <strong>{u}</strong>
+                        <small>
+                          {load(u)} → {stores.filter(s=>owner(s.id)===u).length} farmacias
+                        </small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        {["Farmacia", "Zona", "Supervisor", "Responsable"].map(
+                          (x) => (
+                            <th key={x}>{x}</th>
+                          ),
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stores.slice(0, 16).map((s) => (
+                        <tr key={s.id}>
+                          <td>
+                            {s.id} · {s.name}
+                          </td>
+                          <td>{s.zone}</td>
+                          <td>{s.supervisor}</td>
+                          <td>
+                            <select
+                              value={owner(s.id)}
+                              onChange={(e) =>
+                                X({ ...draft, [s.id]: e.target.value })
+                              }
+                            >
+                              {[...team, "Sin responsable"].map((x) => (
+                                <option key={x}>{x}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <label>
+                  Vigente desde
+                  <input
+                    type="date"
+                    min={today}
+                    value={from}
+                    onChange={(e) => Y(e.target.value)}
+                  />
+                </label>
+                <p>
+                  {moved.length} farmacias cambian de responsable · {affected}{" "}
+                  visitas planificadas afectadas, que deberán reasignarse o
+                  reprogramarse.
+                </p>
+                {orphan.length > 0 && (
+                  <p role="alert" className="error">
+                    {orphan.length} farmacias quedarían sin responsable.
+                    Asígnalas antes de confirmar.
+                  </p>
+                )}
+                <button
+                  className="primary"
+                  disabled={!moved.length || orphan.length > 0 || !from}
+                  onClick={() => {
+                    if (from < today)
+                      return notify("La vigencia no puede ser anterior a hoy.");
+                    record(
+                      `Borrador quincenal confirmado: ${moved.length} farmacias desde el ${dateText(from)}`,
+                    );
+                    X({});
+                  }}
+                >
+                  Confirmar vigencia
+                </button>
+              </>
+            ) : (
+              <>
+                <h2>Cobertura temporal</h2>
             <label>
               Farmacia
               <select value={store} onChange={(e) => S(e.target.value)}>
@@ -205,6 +315,7 @@ export default function Admin({
             >
               Confirmar vigencia
             </button>
+              </>)}
           </>
         ) : tab === "Autorizaciones" ? (
           <>
