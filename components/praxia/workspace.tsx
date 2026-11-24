@@ -35,6 +35,7 @@ import { Detail, Portfolio, Tasks } from "./portfolio";
 import Planning, { type Notice } from "./planning";
 import { Resources, type Session } from "./resources";
 import Admin from "./admin";
+import ManagementHome, {useTeamSummary} from './management-home';
 import {
   today,
   roles,
@@ -255,6 +256,10 @@ function App({ ingreso }: { ingreso: boolean }) {
     }
   }
   const allVisits:Visit[]=[...visits,...settings.batches.filter(b=>b.source==='Histórico de visitas').flatMap(b=>b.rows.map(([store,date,mode,author],i)=>({id:'historico-'+i,store,date,mode,author,actions:[],other:'Histórico importado',queued:false})))];
+  const rows = useTeamSummary(allVisits, tasks, plan, published);
+  const [adminTab, setAdminTab] = useState('Equipo');
+  const homeLabel = role === roles[0] ? 'Inicio del día' : role === 'Administrador' ? 'Panel de administración' : 'Panel de jefatura';
+  function manage(tab:string) { setAdminTab(tab); go('Administración'); }
   const count = visits.filter((v) => v.queued).length;
   return (
     <div className="shell">
@@ -291,7 +296,7 @@ function App({ ingreso }: { ingreso: boolean }) {
                   }
                 >
                   <Icon size={18} />
-                  {s}
+                  {s === 'Inicio del día' ? homeLabel : s}
                   {s === "Mis pendientes" && late > 0 && <em>{late}</em>}
                 </button>
               ))}
@@ -348,7 +353,7 @@ function App({ ingreso }: { ingreso: boolean }) {
             <PanelLeft size={16} />
             <span>Mi espacio</span>
             <ChevronRight size={13} />
-            <b>{page === "Focos rojos" ? "Mi cartera" : page}</b>
+            <b>{page === "Focos rojos" ? "Mi cartera" : page === 'Inicio del día' ? homeLabel : page}</b>
           </div>
           <div className="top-actions">
             <button
@@ -422,7 +427,7 @@ function App({ ingreso }: { ingreso: boolean }) {
           )}
         </header>
         <div className="content">
-          {page === "Inicio del día" ? (
+          {page === 'Inicio del día' && role !== roles[0] ? <ManagementHome role={role} rows={rows} go={go} manage={manage} late={late}/> : page === "Inicio del día" ? (
             <Dashboard
               first={who.split(" ")[0]}
               go={go}
@@ -491,7 +496,7 @@ function App({ ingreso }: { ingreso: boolean }) {
             />
           ) : null}
           <div hidden={page !== "Administración" || role === "Nutricionista"}>
-            <Admin
+            <Admin tab={adminTab} T={setAdminTab} rows={rows}
               role={role}
               plan={plan}
               published={published}
@@ -537,7 +542,8 @@ function App({ ingreso }: { ingreso: boolean }) {
                 onClick={() => {
                   R(r);
                   K(false);
-                  go(i ? "Administración" : "Inicio del día");
+                  setAdminTab('Equipo');
+                  go('Inicio del día');
                 }}
               >
                 <span className="avatar">

@@ -4,8 +4,9 @@ import { useSettings, team } from "./settings";
 import { stores, today, dateText, type Row } from "./data";
 import { ImportPanel } from './import-panel';
 import type { Notice } from "./planning";
+import {TeamTable, type Summary} from './management-home';
 export default function Admin({
-  role,
+  tab, T, rows, role,
   plan,
   published,
   notices,
@@ -14,6 +15,7 @@ export default function Admin({
   permission,
   permit,
 }: {
+  tab: string; T: (tab:string)=>void; rows: Summary;
   role: string;
   plan: Row[];
   published: boolean;
@@ -23,8 +25,7 @@ export default function Admin({
   permission: boolean;
   permit: (v: boolean) => void;
 }) {
-  const [tab, T] = useState("Equipo"),
-    [title, N] = useState(""),
+  const [title, N] = useState(""),
     [date, D] = useState(today),
     [end, E] = useState("2026-12-07"),
     [to, U] = useState("Todas"),
@@ -42,12 +43,8 @@ export default function Admin({
     R([...records, { tab, text, store, date, end }]);
     notify("Registro confirmado.");
   }
-  useEffect(() => T("Equipo"), [role]);
-  const settings = useSettings(),
-    users = team;
-  const load = (u: string, i: number) =>
-    (i === 0 ? 0 : 50 + i) +
-    stores.filter((s) => settings.owner(s.id) === u).length;
+  const settings = useSettings(), users = team;
+  const load = (u: string) => rows.find(r => r.name === u)?.total ?? 0;
   return (
     <>
       <div className="page-intro">
@@ -78,34 +75,7 @@ export default function Admin({
         {tab === "Equipo" ? (
           <>
             <h2>Resumen del equipo</h2>
-            <div className="scroll">
-              <table>
-                <thead>
-                  <tr>
-                    {[
-                      "Nutricionista",
-                      "Cartera",
-                      "Cobertura",
-                      "Focos rojos",
-                      "Plan mensual",
-                    ].map((s) => (
-                      <th key={s}>{s}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u, i) => (
-                    <tr key={u}>
-                      <td>{u}</td>
-                      <td>{load(u, i)}</td>
-                      <td>{[36, 62, 55][i % 3]} %</td>
-                      <td>{[4, 3, 5][i % 3]}</td>
-                      <td>{i || published ? "Publicado" : "Borrador"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <TeamTable rows={rows}/>
           </>
         ) : tab === "Consideraciones" ? (
           <>
@@ -209,7 +179,7 @@ export default function Admin({
                 ).length
               }{" "}
               visitas futuras afectadas · Responsable: {who} · Cartera actual:{" "}
-              {load(who, users.indexOf(who))} farmacias
+              {load(who)} farmacias
             </p>
             <button
               className="primary"
