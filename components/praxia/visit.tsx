@@ -71,7 +71,7 @@ export default function VisitForm({
   function submit() {
     const bad = actions.findIndex(
       (a) =>
-        (!a.persons.length && a.type !== "Reunión o coordinación") ||
+        !a.persons.length ||
         a.persons.some(
           (p) =>
             !p.topics.length ||
@@ -182,7 +182,7 @@ export default function VisitForm({
             ))}
           </select>
         </label>
-        <h3>Participantes y temas{act.type === "Reunión o coordinación" && <small> (opcional)</small>}</h3>
+        <h3>Participantes y temas</h3>
         <label>
           Agregar de la dotación
           <select

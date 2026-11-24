@@ -198,6 +198,7 @@ export function Detail({
         ) : tab === "Equipo" ? (
           <>
             <h3>Dotación · {employees(s.id).length} colaboradores</h3>
+            <p>{employees(s.id).filter((p,i)=>i<2 || own.some(v=>v.actions.some(a=>a.persons.some(x=>x.id===p.id && x.result==='Capacitado')))).length} con capacitación registrada</p>
             {employees(s.id).map((p, i) => (
               <div className="simple-row" key={p.id}>
                 <div>
