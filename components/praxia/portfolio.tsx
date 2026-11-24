@@ -178,7 +178,6 @@ export function Detail({
               {Object.entries({
                 Zona: s.zone,
                 'Última asistencia a Simi Escuela': dateText(s.school),
-                'Satisfacción (última encuesta)': settings.batches.filter(b=>b.source==='Encuesta de satisfacción').flatMap(b=>b.rows.filter(r=>r[0]===s.id)).at(-1)?.[1]?.concat(' / 5') || 'Sin respuesta',
                 Región: s.region,
                 Supervisor: s.supervisor,
                 "Jefe comercial": s.boss,
@@ -240,8 +239,10 @@ export function Detail({
             {own.map((v) => (
               <details open key={v.id}>
                 <summary>
-                  {dateText(v.date)} · {v.mode}{v.mode==='Otros'&&v.other?' ('+v.other+')':''} · {v.author}{v.queued?' · Pendiente de sincronizar':''}
+                  {dateText(v.date)} · {v.mode}{v.mode==='Otros'&&v.other?' ('+v.other+')':''} · {v.author} · {v.id.startsWith('historico-')?'Histórico migrado':'Praxia'} · {v.syncState||(v.queued?'Pendiente de sincronizar':'Sincronizado')}
                 </summary>
+                {v.resolution&&<p>Conflicto resuelto: dispositivo ({v.resolution.device}), servidor de prueba ({v.resolution.remote}). Se eligió: {v.resolution.choice}.</p>}
+                {v.attempt&&<p>Intento sin atención: {v.attempt}</p>}{v.contingency&&<p>Registro de contingencia</p>}{v.planned!==undefined&&<small>{v.planned?'Planificada':'No planificada'}</small>}
                 {v.actions.map((a, i) => (
                   <div className="person" key={i}>
                     <h3>
@@ -293,7 +294,7 @@ export function Tasks({
   open,
 }: {
   tasks: Task[];
-  close: (s: string) => void;
+  close: (s: string,closure?:Task['closure']) => void;
   open: (s: string) => void;
 }) {
   const [tab, T] = useState("Vencidos"),
@@ -337,9 +338,7 @@ export function Tasks({
                 {stores.find((s) => s.id === t.store)?.name}
               </button>
             </div>
-            <button className="secondary" onClick={() => close(t.id)}>
-              {t.closed ? "Reabrir" : "Marcar resuelto"}
-            </button>
+            {t.closed?<div>{t.closure&&<p>{t.closure.action} · {t.closure.result}</p>}<button className="secondary" onClick={()=>close(t.id)}>Reabrir</button></div>:<details><summary>Resolver pendiente</summary><form onSubmit={e=>{e.preventDefault();const data=new FormData(e.currentTarget),action=String(data.get('action')).trim(),result=String(data.get('result')).trim();if(action&&result)close(t.id,{action,result})}}><label>Acción realizada<input name="action" required pattern={'.*\\S.*'}/></label><label>Resultado obtenido<input name="result" required pattern={'.*\\S.*'}/></label><button className="primary">Confirmar cierre</button></form></details>}
           </div>
         ))}
         {!list.length && (

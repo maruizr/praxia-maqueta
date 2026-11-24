@@ -1,9 +1,10 @@
-import { stores, today } from './data';
+import { stores, today, team } from './data';
+import {catalog} from './sheets';
 export const columns = {
   'Dotación de personal': ['farmacia','numero','nombre','cargo'],
-  'Inventario G8': ['farmacia','producto','unidades'],
+  'Inventario G8': ['codigo','corte','unidades'],
   'Asistencia de Simi Escuela': ['farmacia','fecha'],
-  'Encuesta de satisfacción': ['farmacia','puntaje'],
+  'Encuesta de satisfacción': ['nutricionista','mes','puntaje','comentario'],
   'Histórico de visitas': ['farmacia','fecha','modalidad','autora'],
 };
 export type Source = keyof typeof columns;
@@ -17,13 +18,13 @@ export function parseBatch(text:string, source:Source, filename:string):Batch {
   const lines=text.replace(/^\uFEFF/,'').trim().split(/\r?\n/), header=lines.shift()||'', sep=header.includes(';')?';':',';
   const batch:Batch={source,filename,rows:[],errors:[]}, seen=new Set<string>();
   if(fields(header,sep).map(x=>x.toLowerCase()).join(';')!==columns[source].join(';')) throw Error('El encabezado no coincide con las columnas indicadas.');
-  lines.forEach((line,i)=>{if(!line.trim())return; try{const r=fields(line,sep); r[0]=r[0].toUpperCase();
+  lines.forEach((line,i)=>{if(!line.trim())return; try{const r=fields(line,sep); if(source!=='Encuesta de satisfacción')r[0]=r[0].toUpperCase();
     if(r.length!==columns[source].length || r.some(x=>!x || x.length>180))throw Error('Columnas incompletas o demasiado largas');
-    if(!stores.some(s=>s.id===r[0]))throw Error('Código de farmacia desconocido');
+    if(!['Inventario G8','Encuesta de satisfacción'].includes(source)&&!stores.some(s=>s.id===r[0]))throw Error('Código de farmacia desconocido');
     if(source==='Dotación de personal' && !/^\d{1,12}$/.test(r[1]))throw Error('Número de empleado no válido');
-    if(source==='Inventario G8' && (!['Vitamina C G8','Magnesio G8','Omega 3 G8'].includes(r[1]) || !/^\d{1,7}$/.test(r[2])))throw Error('Producto o unidades no válidos');
-    if(source==='Encuesta de satisfacción' && !/^[1-5]$/.test(r[1]))throw Error('El puntaje debe ser de 1 a 5');
-    if(['Histórico de visitas','Asistencia de Simi Escuela'].includes(source) && (!/^\d{4}-\d{2}-\d{2}$/.test(r[1]) || !Number.isFinite(Date.parse(r[1])) || new Date(r[1]).toISOString().slice(0,10)!==r[1] || r[1]>today))throw Error('Fecha no válida o futura');
+    if(source==='Inventario G8' && (!Object.hasOwn(catalog,r[0]) || !/^\d{1,7}$/.test(r[2])))throw Error('Producto o unidades no válidos');
+    if(source==='Encuesta de satisfacción' && (!team.includes(r[0])||!/^\d{4}-(0[1-9]|1[012])$/.test(r[1])||r[1]>today.slice(0,7)||!/^[1-5]$/.test(r[2])))throw Error('Revisa la nutricionista, el mes de referencia y el puntaje de 1 a 5');
+    if(['Inventario G8','Histórico de visitas','Asistencia de Simi Escuela'].includes(source) && (!/^\d{4}-\d{2}-\d{2}$/.test(r[1]) || !Number.isFinite(Date.parse(r[1])) || new Date(r[1]).toISOString().slice(0,10)!==r[1] || r[1]>today))throw Error('Fecha no válida o futura');
     if(source==='Histórico de visitas' && !['Presencial','Online','Otros'].includes(r[2]))throw Error('Modalidad desconocida');
     const key=(source==='Dotación de personal'||source==='Inventario G8'?r.slice(0,2):r).join(';'); if(seen.has(key)&&source!=='Encuesta de satisfacción')throw Error('Fila duplicada');seen.add(key);batch.rows.push(r);
   }catch(e){batch.errors.push(`Fila ${i+2}: ${(e as Error).message}`)}});return batch;

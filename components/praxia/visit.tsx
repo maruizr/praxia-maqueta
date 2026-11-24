@@ -37,6 +37,7 @@ export default function VisitForm({
     [date, D] = useState(today),
     [mode, M] = useState("Presencial"),
     [other, O] = useState(""),
+    [attempt,setAttempt]=useState(false),[reason,setReason]=useState(''),[contingency,setContingency]=useState(false),[planned,setPlanned]=useState(false),
     [actions, A] = useState<Action[]>([blank()]),
     [idx, I] = useState(0),
     [err, E] = useState(""),
@@ -71,7 +72,7 @@ export default function VisitForm({
   function submit() {
     const bad = actions.findIndex(
       (a) =>
-        !a.persons.length ||
+        (!a.persons.length && !['Reunión o coordinación','Estrategia comercial'].includes(a.type)) || (a.type==='Otro' && !a.note.trim()) ||
         a.persons.some(
           (p) =>
             !p.topics.length ||
@@ -81,10 +82,12 @@ export default function VisitForm({
     );
     if (!date || date > today || (mode === "Otros" && !other.trim()))
       return E("Revisa la fecha y completa la descripción de la modalidad.");
-    if (bad !== -1) {
+    if (!store) return E('Selecciona una farmacia asignada.');
+    if (attempt && !reason.trim()) return E('Indica el motivo de no atención.');
+    if (!attempt && bad !== -1) {
       I(bad);
       return E(
-        "Cada gestión necesita participantes y temas. Para un seguimiento, indica el tipo y una fecha igual o posterior a la visita.",
+        "Revisa los participantes, temas y fechas de esta gestión. Solo las reuniones y estrategias pueden quedar sin participantes. Para «Otro», describe la gestión en el comentario.",
       );
     }
     save({
@@ -93,7 +96,7 @@ export default function VisitForm({
       date,
       mode,
       other,
-      actions,
+      actions:attempt?[]:actions, attempt:attempt?reason.trim():undefined, contingency,planned,
       author,
       queued: false,
     });
@@ -148,8 +151,9 @@ export default function VisitForm({
             <input value={other} onChange={(e) => O(e.target.value)} />
           </label>
         )}
+        <div className="form-grid"><label>Atención<select value={attempt?'Intento':'Efectiva'} onChange={e=>setAttempt(e.target.value==='Intento')}><option>Efectiva</option><option>Intento</option></select></label><label>Planificación<select value={planned?'Planificada':'No planificada'} onChange={e=>setPlanned(e.target.value==='Planificada')}><option>No planificada</option><option>Planificada</option></select></label></div>{attempt&&<label>Motivo de no atención<textarea value={reason} onChange={e=>setReason(e.target.value)}/></label>}<label className="check"><input type="checkbox" checked={contingency} onChange={e=>setContingency(e.target.checked)}/> Registro de contingencia con la fecha real de la visita</label>
       </section>
-      <section className="panel form-panel">
+      {!attempt&&<section className="panel form-panel">
         <div className="tabs">
           {actions.map((_, i) => (
             <button
@@ -361,7 +365,7 @@ export default function VisitForm({
           />
           {act.file && <small>{act.file}</small>}
         </label>
-      </section>
+      </section>}
       {err && (
         <p role="alert" className="error">
           {err}

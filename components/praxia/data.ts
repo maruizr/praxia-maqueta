@@ -4,15 +4,15 @@ export const dateText = (d: string) =>
     day: "numeric",
     month: "short",
   });
-export const roles = ["Nutricionista", "Jefatura", "Administrador"];
-export const names = ["Camila Morales", "Paula Fuentes", "Tomás Vidal"];
+export const roles = ["Nutricionista", "Administrador"];
+export const names = ["Camila Morales", "Paula Fuentes"];
 export const topics = [
   "Vitamina C G8",
   "Magnesio G8",
   "Omega 3 G8",
   "Concurso Impulso G8",
   "Campaña Bienestar",
-  "Productos naturales",
+  "Productos naturales", "Nuevas inclusiones", "Novedades", "Portal", "Concursos activos", "Productos de baja rotación o baja venta", "PPT del mes", "Líneas y packs",
   "Otro",
 ];
 export const types = [
@@ -175,6 +175,11 @@ export type Visit = {
   actions: Action[];
   author: string;
   queued: boolean;
+  syncState?:'Pendiente'|'Sincronizando'|'Sincronizado'|'Error'|'Conflicto';
+  resolution?:{device:string;remote:string;choice:string};
+  attempt?:string;
+  contingency?:boolean;
+  planned?:boolean;
 };
 export type Task = {
   id: string;
@@ -183,6 +188,7 @@ export type Task = {
   kind: string;
   date: string;
   closed: boolean;
+  closure?: {action:string;result:string};
 };
 export type Row = { store: string; date: string; mode: string; type: string };
 export const initialPlan: Row[] = stores
@@ -213,7 +219,7 @@ export const seedTasks: Task[] = stores
     closed: false,
   }));
 export function status(s: Store, v: Visit[], tasks: Task[]) {
-  const vs = v.filter((x) => x.store === s.id);
+  const vs = v.filter((x) => x.store === s.id && !x.attempt);
   const last = [
     s.last,
     ...vs.filter((x) => x.mode === "Presencial").map((x) => x.date),
