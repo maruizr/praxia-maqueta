@@ -195,7 +195,7 @@ export function Resources({
         86 +
           new Set(
             visits.flatMap((v) =>
-              v.actions.flatMap((a) => a.persons.map((p) => p.id)),
+              v.actions.flatMap((a) => a.persons.filter(p=>!p.provisional).map((p) => p.id)),
             ),
           ).size,
         120,

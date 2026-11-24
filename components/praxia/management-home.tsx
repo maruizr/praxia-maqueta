@@ -6,7 +6,7 @@ export function useTeamSummary(visits: Visit[], tasks: Task[], plans: Record<str
   const settings = useSettings();
   return team.map(name => {
     const owned = stores.filter(s => settings.owner(s.id) === name);
-    const states = owned.map(s => status({...s, school: settings.school(s.id), freq: settings.frequency[s.id] ?? s.freq}, visits, tasks));
+    const states = owned.map(s => status({...s,pendingTraining:settings.pendingTraining(s.id), school: settings.school(s.id), freq: settings.frequency[s.id] ?? s.freq}, visits, tasks));
     const {rows, published} = plans[name];
     const planned = rows.length;
     return {name, total: owned.length, covered: states.filter(s => s.count > 0).length, red: states.filter(s => s.p === 1).length, planned, planState: planned ? published ? 'Publicado' : 'Borrador' : 'Sin actividades'};

@@ -62,7 +62,7 @@ export default function Dashboard({
   first?: string;
 }) {
   const settings = useSettings();
-  const red = stores.filter((s) => settings.owner(s.id) === 'Camila Morales' && status({...s,school:settings.school(s.id)}, visits, tasks).p === 1).length,
+  const red = stores.filter((s) => settings.owner(s.id) === 'Camila Morales' && status({...s,pendingTraining:settings.pendingTraining(s.id),school:settings.school(s.id)}, visits, tasks).p === 1).length,
     late = tasks.filter((t) => !t.closed && t.date < today).length,
     rows = plan.filter((r) => r.date === today);
   const data = [
@@ -78,7 +78,7 @@ export default function Dashboard({
       86 +
         new Set(
           visits.flatMap((v) =>
-            v.actions.flatMap((a) => a.persons.map((p) => p.id)),
+            v.actions.flatMap((a) => a.persons.filter(p=>!p.provisional).map((p) => p.id)),
           ),
         ).size,
       "colaboradores este mes",

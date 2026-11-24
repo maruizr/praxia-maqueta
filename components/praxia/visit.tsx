@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import {FieldReviews,type Review} from './field-review';
 import { useSettings } from "./settings";
 import { Plus, Copy, Save, Trash2, Store as Shop } from "lucide-react";
 import {
@@ -42,6 +43,7 @@ export default function VisitForm({
     [idx, I] = useState(0),
     [err, E] = useState(""),
     [extra, X] = useState("");
+  const [reviews,setReviews]=useState<Review[]>([]);
   const employees = settings.roster,
     act = actions[idx];
   function patch(p: Partial<Action>) {
@@ -53,7 +55,7 @@ export default function VisitForm({
       persons: act.persons.map((x) => (x.id === id ? { ...x, ...p } : x)),
     });
   }
-  function add(e: ReturnType<typeof employees>[0]) {
+  function add(e: ReturnType<typeof employees>[0] & {provisional?:boolean;home?:string}) {
     if (!act.persons.some((x) => x.id === e.id))
       patch({
         persons: [
@@ -96,7 +98,7 @@ export default function VisitForm({
       date,
       mode,
       other,
-      actions:attempt?[]:actions, attempt:attempt?reason.trim():undefined, contingency,planned,
+      reviews:attempt?[]:reviews,actions:attempt?[]:actions, attempt:attempt?reason.trim():undefined, contingency,planned,
       author,
       queued: false,
     });
@@ -153,6 +155,7 @@ export default function VisitForm({
         )}
         <div className="form-grid"><label>Atención<select value={attempt?'Intento':'Efectiva'} onChange={e=>setAttempt(e.target.value==='Intento')}><option>Efectiva</option><option>Intento</option></select></label><label>Planificación<select value={planned?'Planificada':'No planificada'} onChange={e=>setPlanned(e.target.value==='Planificada')}><option>No planificada</option><option>Planificada</option></select></label></div>{attempt&&<label>Motivo de no atención<textarea value={reason} onChange={e=>setReason(e.target.value)}/></label>}<label className="check"><input type="checkbox" checked={contingency} onChange={e=>setContingency(e.target.checked)}/> Registro de contingencia con la fecha real de la visita</label>
       </section>
+      {!attempt&&<FieldReviews values={reviews} change={setReviews} customer={!owner||settings.permission(author,'atencion')} version={'Noviembre 2026 · '+(settings.publicity?.name||'Lista inicial')}/>}
       {!attempt&&<section className="panel form-panel">
         <div className="tabs">
           {actions.map((_, i) => (
@@ -237,6 +240,7 @@ export default function VisitForm({
             </button>
           </div>
         </details>
+        <details><summary>Crear colaborador provisional</summary><form className="form-grid" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget),name=String(f.get('name')||'').trim();if(!name)return;add({id:'prov:'+crypto.randomUUID(),name,job:String(f.get('job')),home:store,provisional:true});e.currentTarget.reset()}}><p>Se puede capacitar de inmediato en {store}. No contará como persona única hasta la conciliación.</p><label>Nombre del colaborador<input required name="name" maxLength={100}/></label><label>Cargo<select name="job"><option>Auxiliar de farmacia</option><option>Químico farmacéutico</option><option>Encargado</option></select></label><button className="secondary">Agregar provisional</button></form></details>
         {act.persons.map((p, i) => (
           <div className="person" key={p.id}>
             <div className="heading-line">

@@ -381,7 +381,7 @@ export default function Admin({
               }}
             >
               Aprobar autorización
-            </button>
+            </button><h3>Autorizaciones concedidas</h3>{settings.grants.length===0?<p className="empty">Sin autorizaciones concedidas.</p>:settings.grants.map((g,i)=><div className="simple-row" key={i}><div><strong>{g.who} · {g.info}</strong><small>{g.territory} · {g.start} al {g.end}</small></div><button className="secondary" onClick={()=>{settings.revoke(g);record(`Revocada: ${g.who} · ${g.info} · ${g.territory}`)}}>Revocar</button></div>)}
           </>
         ) : tab === "Permisos" ? (
           <>
@@ -413,7 +413,7 @@ export default function Admin({
                 }
               />{" "}
               Cargar publicidad del mes
-            </label>
+            </label><label className="check"><input type="checkbox" checked={settings.permission(who,'atencion')} onChange={e=>settings.grant(who,'atencion',e.target.checked)}/> Registrar atención al cliente</label>
           </>
         ) : tab === "Catálogos" ? (
           <>

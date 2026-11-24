@@ -5,6 +5,7 @@ export const columns = {
   'Inventario G8': ['codigo','corte','unidades'],
   'Asistencia de Simi Escuela': ['farmacia','fecha'],
   'Encuesta de satisfacción': ['nutricionista','mes','puntaje','comentario'],
+  'Cierre mensual de nuevos ingresos':['farmacia','numero','mes','resultado'],
   'Histórico de visitas': ['farmacia','fecha','modalidad','autora'],
 };
 export type Source = keyof typeof columns;
@@ -21,6 +22,7 @@ export function parseBatch(text:string, source:Source, filename:string):Batch {
   lines.forEach((line,i)=>{if(!line.trim())return; try{const r=fields(line,sep); if(source!=='Encuesta de satisfacción')r[0]=r[0].toUpperCase();
     if(r.length!==columns[source].length || r.some(x=>!x || x.length>180))throw Error('Columnas incompletas o demasiado largas');
     if(!['Inventario G8','Encuesta de satisfacción'].includes(source)&&!stores.some(s=>s.id===r[0]))throw Error('Código de farmacia desconocido');
+    if(source==='Cierre mensual de nuevos ingresos'&&(!/^\d{1,12}$/.test(r[1])||!/^\d{4}-(0[1-9]|1[0-2])$/.test(r[2])||r[2]>today.slice(0,7)||!['Completo','Pendiente'].includes(r[3])))throw Error('Revisa número, mes y resultado (Completo o Pendiente)');
     if(source==='Dotación de personal' && !/^\d{1,12}$/.test(r[1]))throw Error('Número de empleado no válido');
     if(source==='Inventario G8' && (!Object.hasOwn(catalog,r[0]) || !/^\d{1,7}$/.test(r[2])))throw Error('Producto o unidades no válidos');
     if(source==='Encuesta de satisfacción' && (!team.includes(r[0])||!/^\d{4}-(0[1-9]|1[012])$/.test(r[1])||r[1]>today.slice(0,7)||!/^[1-5]$/.test(r[2])))throw Error('Revisa la nutricionista, el mes de referencia y el puntaje de 1 a 5');
