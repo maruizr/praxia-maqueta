@@ -55,14 +55,18 @@ const places = [
   "Estación Central",
   "Conchalí",
 ];
-export const stores = Array.from({ length: 56 }, (_, i) => {
+export const team = ['Camila Morales','Francisca Díaz','Paula Fuentes','Josefa Ruiz','Isidora Tapia','Daniela Araya','Fernanda Vega','Carolina Leiva','Martina Pino','Constanza León','Javiera Bravo','Catalina Paz'];
+export const stores = Array.from({ length: team.length * 56 }, (_, index) => {
+  const route = Math.floor(index / 56), i = index % 56;
+  const activityIndex = (i + route * 3) % 56;
   const zone = i % 3 === 0 ? "Oriente" : i % 3 === 1 ? "Centro" : "Sur";
   return {
-    id: i % 3 === 1 ? "F" + (1063 + i) : "CL" + (2048 + i),
+    owner: team[route],
+    id: i % 3 === 1 ? "F" + (1063 + index) : "CL" + (2048 + index),
     name:
       "Farmacia " +
       places[i % 16] +
-      ["", " Norte", " Sur", " Plaza"][Math.floor(i / 16)],
+      ["", " Norte", " Sur", " Plaza"][Math.floor(i / 16)] + (route ? ` · Sector ${route + 1}` : ''),
     place: places[i % 16],
     zone,
     region: "Metropolitana",
@@ -73,14 +77,13 @@ export const stores = Array.from({ length: 56 }, (_, i) => {
       "Av. Irarrázaval 3480",
       "Av. Apoquindo 5210",
     ][i % 3],
-    last: i < 4 ? "2026-08-18" : i < 12 ? "2026-10-22" : "2026-11-17",
-    training: i < 4 ? "2026-08-20" : "2026-11-10",
+    last: activityIndex < 4 + route % 3 ? "2026-08-18" : activityIndex < 36 - route ? "2026-10-22" : "2026-11-17",
+    training: activityIndex < 4 + route % 3 ? "2026-08-20" : "2026-11-10",
     school: "2026-11-05",
     freq: 1,
   };
 });
 export type Store = (typeof stores)[number];
-export const team = ["Camila Morales", "Francisca Díaz", "Javiera Pérez"];
 const firstNames = [
   "Valentina",
   "Felipe",
@@ -137,7 +140,7 @@ const jobs = [
 export const employees = (id: string) => {
   const k = Math.max(
     0,
-    stores.findIndex((s) => s.id === id),
+    storeIndex.get(id) ?? 0,
   );
   return jobs.map((job, i) => ({
     name:
@@ -161,6 +164,7 @@ export type Action = {
   persons: Person[];
   note: string;
   file: string;
+  attachment?: File;
 };
 export type Visit = {
   id: string;
@@ -181,22 +185,33 @@ export type Task = {
   closed: boolean;
 };
 export type Row = { store: string; date: string; mode: string; type: string };
-export const initialPlan: Row[] = stores.slice(0, 12).map((s, i) => ({
-  store: s.id,
-  date: i < 3 ? today : "2026-11-" + (24 + Math.floor((i - 3) / 2)),
-  mode: i % 3 === 2 ? "Online" : "Presencial",
-  type: activities[[0, 3, 4][i % 3]],
-}));
-export const seedTasks: Task[] = stores.slice(0, 5).map((s, i) => ({
-  id: "seed" + i,
-  store: s.id,
-  name: employees(s.id)[(i * 2) % 5].name,
-  kind: i % 2 ? "Revisión de producto" : "Seguimiento de capacitación",
-  date: ["2026-11-19", "2026-11-20", "2026-11-22", "2026-11-25", "2026-11-26"][
-    i
-  ],
-  closed: false,
-}));
+export const initialPlan: Row[] = stores
+  .slice(0, 12)
+  .map((s, i) => ({
+    store: s.id,
+    date: i < 3 ? today : "2026-11-" + (24 + Math.floor((i - 3) / 2)),
+    mode: i % 3 === 2 ? "Online" : "Presencial",
+    type: activities[[0, 3, 4][i % 3]],
+  }));
+export const storeIndex = new Map(stores.map((s,i)=>[s.id,i]));
+export type MonthlyPlan = {rows:Row[]; published:boolean};
+export const demoPlans:Record<string,MonthlyPlan> = Object.fromEntries(team.map((name,route)=>[name,{published:route % 3 !== 0, rows:initialPlan.slice(0,12-route%4).map((r,i)=>({...r,store:stores[route*56+i].id}))}]));
+export const seedTasks: Task[] = stores
+  .slice(0, 5)
+  .map((s, i) => ({
+    id: "seed" + i,
+    store: s.id,
+    name: employees(s.id)[0].name,
+    kind: i % 2 ? "Revisión de producto" : "Seguimiento de capacitación",
+    date: [
+      "2026-11-19",
+      "2026-11-20",
+      "2026-11-22",
+      "2026-11-25",
+      "2026-11-26",
+    ][i],
+    closed: false,
+  }));
 export function status(s: Store, v: Visit[], tasks: Task[]) {
   const vs = v.filter((x) => x.store === s.id);
   const last = [

@@ -8,7 +8,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import {
-  activities,
+  activities, team,
   status,
   today,
   stores,
@@ -17,9 +17,10 @@ import {
   type Visit,
   type Task,
 } from "./data";
+import {useSettings} from './settings';
 export type Notice = { date: string; title: string; to: string; hotel: string };
 export default function Planning({
-  plan,
+  plan, planner,
   setPlan,
   published,
   publish,
@@ -29,6 +30,7 @@ export default function Planning({
   open,
   notify,
 }: {
+  planner:string;
   plan: Row[];
   setPlan: (r: Row[]) => void;
   published: boolean;
@@ -39,38 +41,70 @@ export default function Planning({
   open: (id: string) => void;
   notify: (s: string) => void;
 }) {
+  const settings=useSettings();
+  const cartera = stores.filter(s=>settings.owner(s.id)===planner);
+  const rejected = Object.entries(settings.rejected).filter(([id])=>settings.owner(id)===planner);
+  const firstStore = cartera[0]?.id ?? '';
   const [week, W] = useState(false),
     [start, B] = useState(23),
     [tab, T] = useState("Actividades"),
     [add, A] = useState(false),
     [date, D] = useState(today),
-    [store, S] = useState(stores[0].id),
+    [store, S] = useState(firstStore),
     [mode, M] = useState("Presencial"),
     [type, Y] = useState(activities[0]),
-    [rejected, J] = useState<string[]>([]),
+
     [reason, R] = useState("");
   const rows = plan.filter(
     (r) =>
       !week || (+r.date.slice(-2) >= start && +r.date.slice(-2) < start + 7),
   );
+  const [editing, setEditing] = useState<Row | null>(null);
+  const [confirmRemoval, setConfirmRemoval] = useState(false);
+  function removeActivity() {
+    if (!editing || !confirmRemoval) return;
+    const matches = (r: { store: string; date: string }) => r.store === editing.store && r.date === editing.date;
+    if (visits.some(matches)) return notify("Esta visita ya está registrada y no se puede retirar.");
+    setPlan(plan.filter((r) => !matches(r)));
+    publish(false);
+    setConfirmRemoval(false);
+    setEditing(null);
+    A(false);
+    notify("Actividad retirada del plan.");
+    requestAnimationFrame(() => document.getElementById("add-plan-activity")?.focus());
+  }
+  function showForm(row: Row | null, suggestedStore = firstStore) {
+    setConfirmRemoval(false);
+    setEditing(row);
+    D(row?.date ?? (suggestedStore === firstStore ? today : "2026-11-30"));
+    S(row?.store ?? suggestedStore);
+    M(row?.mode ?? "Presencial");
+    Y(row?.type ?? activities[0]);
+    T("Actividades");
+    A(true);
+    requestAnimationFrame(() => document.getElementById("plan-date")?.focus());
+  }
   function save() {
+    if (!store || (!cartera.some(s=>s.id===store) && editing?.store !== store)) return notify('Selecciona una farmacia de esta cartera.');
     if (!date.startsWith("2026-11"))
       return notify("Selecciona una fecha de noviembre.");
-    if (plan.some((r) => r.store === store && r.date === date))
+    const remaining = plan.filter((r) => !editing || r.store !== editing.store || r.date !== editing.date);
+    if (remaining.some((r) => r.store === store && r.date === date))
       return notify("Esta farmacia ya está planificada para esa fecha.");
     setPlan(
-      [...plan, { store, date, mode, type }].sort((a, b) =>
+      [...remaining, { store, date, mode, type }].sort((a, b) =>
         a.date.localeCompare(b.date),
       ),
     );
     publish(false);
     A(false);
-    notify("Actividad agregada al borrador.");
+    notify(editing ? "Actividad actualizada en el borrador." : "Actividad agregada al borrador.");
+    setEditing(null);
   }
   return (
     <>
       <div className="page-intro">
-        <div className="eyebrow">Mi planificación · Ruta 08</div>
+        <div className="eyebrow">Ruta {String(8+team.indexOf(planner)).padStart(2,'0')} · {planner}</div>
         <div className="heading-line">
           <h1>Plan del mes</h1>
           <span className="pill green">
@@ -84,7 +118,7 @@ export default function Planning({
           <h2>
             <CalendarDays size={20} /> Noviembre 2026
           </h2>
-          <button className="primary" onClick={() => A(!add)}>
+          <button id="add-plan-activity" className="primary" onClick={() => showForm(null)}>
             <Plus size={15} /> Actividad
           </button>
         </div>
@@ -101,13 +135,27 @@ export default function Planning({
           }{" "}
           online
         </p>
-        {add && (
+        {add && confirmRemoval && editing ? (
+          <section className="person form-stack" aria-labelledby="remove-title">
+            <h3 id="remove-title">¿Retirar esta actividad del plan?</h3>
+            <p><strong>{stores.find((s) => s.id === editing.store)?.name} · {dateText(editing.date)}</strong><br />{editing.type} · {editing.mode}</p>
+            <p>La actividad dejará de aparecer en la agenda y el plan quedará como borrador.</p>
+            <div className="actions">
+              <button autoFocus className="secondary" onClick={() => { setConfirmRemoval(false); requestAnimationFrame(() => document.getElementById("remove-activity")?.focus()); }}>Volver sin retirar</button>
+              <button className="primary" onClick={removeActivity}>Confirmar retiro</button>
+            </div>
+          </section>
+        ) : add && (
           <div className="person form-stack">
+            <h3>{editing ? "Editar actividad" : "Nueva actividad"}</h3>
             <div className="form-grid">
               <label>
                 Fecha tentativa
                 <input
+                  id="plan-date"
                   type="date"
+                  min="2026-11-01"
+                  max="2026-11-30"
                   value={date}
                   onChange={(e) => D(e.target.value)}
                 />
@@ -115,7 +163,7 @@ export default function Planning({
               <label>
                 Farmacia
                 <select value={store} onChange={(e) => S(e.target.value)}>
-                  {stores.map((s) => (
+                  {stores.filter(s=>settings.owner(s.id)===planner || editing?.store===s.id).map((s) => (
                     <option value={s.id} key={s.id}>
                       {s.name} · {s.id}
                     </option>
@@ -139,9 +187,13 @@ export default function Planning({
                 </select>
               </label>
             </div>
-            <button className="primary" onClick={save}>
-              Guardar actividad
-            </button>
+            <div className="actions">
+              {editing && <button id="remove-activity" className="text-btn" onClick={() => setConfirmRemoval(true)}>Retirar actividad</button>}
+              <button className="secondary" onClick={() => A(false)}>Cancelar</button>
+              <button className="primary" onClick={save}>
+                {editing ? "Guardar cambios" : "Guardar actividad"}
+              </button>
+            </div>
           </div>
         )}
         <div className="tabs">
@@ -196,6 +248,7 @@ export default function Planning({
                       "Modalidad",
                       "Supervisor / jefatura",
                       "Fecha real",
+                      "Acción",
                     ].map((x) => (
                       <th key={x}>{x}</th>
                     ))}
@@ -226,6 +279,7 @@ export default function Planning({
                           <small>{s.boss}</small>
                         </td>
                         <td>{v ? dateText(v.date) : "Sin registrar"}</td>
+                        <td>{v ? "Registrada" : <button className="text-btn" aria-label={`Editar actividad de ${s.name} del ${dateText(r.date)}`} onClick={() => showForm(r)}>Editar</button>}</td>
                       </tr>
                     );
                   })}
@@ -233,7 +287,7 @@ export default function Planning({
               </table>
             </div>
             {!rows.length && (
-              <p className="empty">Sin actividades esta semana.</p>
+              <p className="empty">{week ? "Sin actividades esta semana." : "El plan está vacío. Agrega una actividad para publicarlo."}</p>
             )}
             <div className="actions">
               <button
@@ -247,7 +301,7 @@ export default function Planning({
               </button>
               <button
                 className="primary"
-                disabled={published}
+                disabled={published || !plan.length}
                 onClick={() => {
                   publish(true);
                   notify("Plan publicado para jefatura.");
@@ -285,11 +339,19 @@ export default function Planning({
                 placeholder="Indica un motivo antes de rechazar"
               />
             </label>
-            {stores
+            {rejected.length>0 && <details><summary>Sugerencias rechazadas ({rejected.length})</summary>{rejected.map(([id,motivo])=><p key={id}>{stores.find(s=>s.id===id)?.name} · {motivo}</p>)}</details>}
+            {cartera.map(s=>({...s,school:settings.school(s.id),freq:settings.frequency[s.id]||s.freq}))
               .filter(
                 (s) =>
-                  status(s, visits, tasks).last < "2026-11-10" &&
-                  !rejected.includes(s.id) &&
+                  [
+                    s.last,
+                    ...visits
+                      .filter((v) => v.store === s.id)
+                      .map((v) => v.date),
+                  ]
+                    .sort()
+                    .at(-1)! < "2026-11-10" &&
+                  !settings.rejected[s.id] &&
                   !plan.some((r) => r.store === s.id && r.date > today),
               )
               .sort(
@@ -309,7 +371,7 @@ export default function Planning({
                     onClick={() => {
                       if (!reason.trim())
                         return notify("Escribe el motivo del rechazo.");
-                      J([...rejected, s.id]);
+                      settings.rejectSuggestion(s.id,reason.trim());
                       R("");
                     }}
                   >
@@ -318,10 +380,7 @@ export default function Planning({
                   <button
                     className="primary"
                     onClick={() => {
-                      S(s.id);
-                      D("2026-11-30");
-                      A(true);
-                      T("Actividades");
+                      showForm(null, s.id);
                     }}
                   >
                     Aceptar

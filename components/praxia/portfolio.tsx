@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useSettings } from "./settings";
 import {
   Search,
   ChevronRight,
@@ -18,11 +19,12 @@ import {
   today,
 } from "./data";
 export function Portfolio({
-  red,
+  owner, red,
   visits,
   tasks,
   open,
 }: {
+  owner?:string;
   red: boolean;
   visits: Visit[];
   tasks: Task[];
@@ -33,19 +35,23 @@ export function Portfolio({
     [zone, Z] = useState(""),
     [sup, S] = useState(""),
     [reg, R] = useState("");
-  const list = stores.filter(
-    (s) =>
-      (s.name + " " + s.id).toLowerCase().includes(q.toLowerCase()) &&
-      (!p || p === "P" + status(s, visits, tasks).p) &&
-      (!zone || s.zone === zone) &&
-      (!sup || sup === s.supervisor) &&
-      (!reg || reg === s.region),
-  );
+  const settings = useSettings();
+  const list = stores
+    .filter((s) => !owner || settings.owner(s.id) === owner)
+    .map((s) => ({ ...s, school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq }))
+    .filter(
+      (s) =>
+        (s.name + " " + s.id).toLowerCase().includes(q.toLowerCase()) &&
+        (!p || p === "P" + status(s, visits, tasks).p) &&
+        (!zone || s.zone === zone) &&
+        (!sup || sup === s.supervisor) &&
+        (!reg || reg === s.region),
+    );
   return (
     <>
       <div className="page-intro">
         <div className="eyebrow">Trabajo en terreno</div>
-        <h1>Mi cartera</h1>
+        <h1>{owner ? 'Mi cartera' : 'Cartera del equipo'}</h1>
         <p>Consulta tus farmacias y prioriza tu próxima visita.</p>
       </div>
       <section className="panel form-panel">
@@ -78,7 +84,7 @@ export function Portfolio({
             </select>
           ))}
         </div>
-        <small>{list.length} farmacias · Ruta 08</small>
+        <small>{list.length} farmacias · {owner || 'Todo el equipo'}</small>
         {list.map((s) => (
           <button key={s.id} className="simple-row" onClick={() => open(s.id)}>
             <i className="activity-icon">
@@ -121,6 +127,9 @@ export function Detail({
   tasks: Task[];
   visit: () => void;
 }) {
+  const settings = useSettings();
+  const employees=settings.roster;
+  s = { ...s, school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq };
   const st = status(s, visits, tasks),
     [tab, T] = useState("Resumen");
   const own = visits.filter((v) => v.store === s.id);
@@ -168,10 +177,12 @@ export function Detail({
             <dl className="facts">
               {Object.entries({
                 Zona: s.zone,
+                'Última asistencia a Simi Escuela': dateText(s.school),
+                'Satisfacción (última encuesta)': settings.batches.filter(b=>b.source==='Encuesta de satisfacción').flatMap(b=>b.rows.filter(r=>r[0]===s.id)).at(-1)?.[1]?.concat(' / 5') || 'Sin respuesta',
                 Región: s.region,
                 Supervisor: s.supervisor,
                 "Jefe comercial": s.boss,
-                Nutricionista: "Camila Morales",
+                Nutricionista: settings.owner(s.id),
                 "Frecuencia esperada": s.freq + " visita mensual",
                 "Visitas realizadas este mes": st.count,
                 "Última visita presencial": dateText(st.last),
@@ -228,7 +239,7 @@ export function Detail({
             {own.map((v) => (
               <details open key={v.id}>
                 <summary>
-                  {dateText(v.date)} · {v.mode} · {v.author}
+                  {dateText(v.date)} · {v.mode}{v.mode==='Otros'&&v.other?' ('+v.other+')':''} · {v.author}{v.queued?' · Pendiente de sincronizar':''}
                 </summary>
                 {v.actions.map((a, i) => (
                   <div className="person" key={i}>
@@ -237,12 +248,25 @@ export function Detail({
                     </h3>
                     {a.persons.map((p) => (
                       <p key={p.id}>
-                        {p.name} · {p.topics.join(", ")} · {p.result} {p.note}
+                        {p.name} · {p.topics.join(", ")} · {p.result}{['Requiere seguimiento','Reservada para una fecha'].includes(p.result)&&p.due?' · '+dateText(p.due):''}{p.result==='Requiere seguimiento'?' · '+p.kind:''} {p.note}
                       </p>
                     ))}
-                    <small>
-                      {a.note} {a.file}
-                    </small>
+                    <small>{a.note}</small>
+                    {a.attachment && (
+                      <button
+                        className="text-btn"
+                        onClick={() => {
+                          const url = URL.createObjectURL(a.attachment!);
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.download = a.file;
+                          link.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        }}
+                      >
+                        Descargar evidencia · {a.file}
+                      </button>
+                    )}
                   </div>
                 ))}
               </details>

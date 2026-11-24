@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
+import { SettingsProvider, useSettings } from "./settings";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -34,12 +35,13 @@ import { Detail, Portfolio, Tasks } from "./portfolio";
 import Planning, { type Notice } from "./planning";
 import { Resources, type Session } from "./resources";
 import Admin from "./admin";
+import ManagementHome, {useTeamSummary} from './management-home';
 import {
   today,
   roles,
   names,
   stores,
-  initialPlan,
+  demoPlans, team,
   seedTasks,
   type Visit,
   type Task,
@@ -88,10 +90,18 @@ const queueDB = () =>
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
-export default function Praxia() {
+export default function Praxia({ ingreso = false }: { ingreso?: boolean }) {
+  return (
+    <SettingsProvider>
+      <App ingreso={ingreso} />
+    </SettingsProvider>
+  );
+}
+function App({ ingreso }: { ingreso: boolean }) {
+  const settings = useSettings();
   const [page, G] = useState("Inicio del día"),
     [role, R] = useState(roles[0]),
-    [picker, K] = useState(false),
+    [picker, K] = useState(ingreso),
     [mobile, M] = useState(false),
     [pop, P] = useState(""),
     [offline, O] = useState(false),
@@ -99,8 +109,8 @@ export default function Praxia() {
     [id, S] = useState(stores[0].id),
     [visits, V] = useState<Visit[]>([]),
     [tasks, T] = useState<Task[]>(seedTasks),
-    [plan, L] = useState<Row[]>(initialPlan),
-    [published, H] = useState(false),
+    [plans, setPlans] = useState(demoPlans),
+    [selectedPlanner, selectPlanner] = useState(team[0]),
     [toast, A] = useState(""),
     [notices, B] = useState<Notice[]>([
       {
@@ -132,6 +142,10 @@ export default function Praxia() {
     off = offline || !network,
     late = tasks.filter((t) => !t.closed && t.date < today).length,
     timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const planner = role === roles[0] ? who : selectedPlanner;
+  const {rows:plan, published} = plans[planner];
+  const L = (rows:Row[]) => setPlans(prev=>({...prev,[planner]:{...prev[planner],rows}}));
+  const H = (published:boolean) => setPlans(prev=>({...prev,[planner]:{...prev[planner],published}}));
   function notify(s: string) {
     A(s);
     if (timer.current) clearTimeout(timer.current);
@@ -245,6 +259,11 @@ export default function Praxia() {
       notify("No se pudo procesar la cola.");
     }
   }
+  const allVisits:Visit[]=[...visits,...settings.batches.filter(b=>b.source==='Histórico de visitas').flatMap(b=>b.rows.map(([store,date,mode,author],i)=>({id:'historico-'+i,store,date,mode,author,actions:[],other:'Histórico importado',queued:false})))];
+  const rows = useTeamSummary(allVisits, tasks, plans);
+  const [adminTab, setAdminTab] = useState('Equipo');
+  const homeLabel = role === roles[0] ? 'Inicio del día' : role === 'Administrador' ? 'Panel de administración' : 'Panel de jefatura';
+  function manage(tab:string) { setAdminTab(tab); go('Administración'); }
   const count = visits.filter((v) => v.queued).length;
   return (
     <div className="shell">
@@ -261,63 +280,49 @@ export default function Praxia() {
           <p>Del conocimiento a la acción</p>
         </div>
         <nav>
-          {role !== roles[0] && (
-            <div className="nav-group">
-              <div className="nav-label">Equipo</div>
-              <button
-                className={
-                  page === "Administración" ? "nav-link active" : "nav-link"
-                }
-                onClick={() => go("Administración")}
-              >
-                <SlidersHorizontal size={18} />
-                Administración
-              </button>
+          {groups.map((g) => (
+            <div className="nav-group" key={g.title}>
+              <div className="nav-label">{g.title}</div>
+              {g.items.map(([s, Icon]) => (
+                <button
+                  key={s}
+                  onClick={() => go(s)}
+                  className={
+                    page === s ||
+                    (s === "Mi cartera" &&
+                      [
+                        "Ficha de farmacia",
+                        "Focos rojos",
+                        "Registrar visita",
+                      ].includes(page))
+                      ? "nav-link active"
+                      : "nav-link"
+                  }
+                >
+                  <Icon size={18} />
+                  {s === 'Inicio del día' ? homeLabel : s}
+                  {s === "Mis pendientes" && late > 0 && <em>{late}</em>}
+                </button>
+              ))}
             </div>
+          ))}
+          {role !== roles[0] && (
+            <button className="nav-link" onClick={() => go("Administración")}>
+              <SlidersHorizontal size={18} />
+              Administración
+            </button>
           )}
-          {groups
-            .filter(
-              (g) => role === roles[0] || g.title !== "Espacio de trabajo",
-            )
-            .map((g) => (
-              <div className="nav-group" key={g.title}>
-                <div className="nav-label">{g.title}</div>
-                {g.items.map(([s, Icon]) => (
-                  <button
-                    key={s}
-                    onClick={() => go(s)}
-                    className={
-                      page === s ||
-                      (s === "Mi cartera" &&
-                        [
-                          "Ficha de farmacia",
-                          "Focos rojos",
-                          "Registrar visita",
-                        ].includes(page))
-                        ? "nav-link active"
-                        : "nav-link"
-                    }
-                  >
-                    <Icon size={18} />
-                    {s}
-                    {s === "Mis pendientes" && late > 0 && <em>{late}</em>}
-                  </button>
-                ))}
-              </div>
-            ))}
         </nav>
         <div className="side-bottom">
-          {role === roles[0] && (
-            <div className="route-note">
-              <i>
-                <Route size={18} />
-              </i>
-              <div>
-                <strong>Ruta 08</strong>
-                <small>Región Metropolitana</small>
-              </div>
+          <div className="route-note">
+            <i>
+              <Route size={18} />
+            </i>
+            <div>
+              <strong>Ruta 08</strong>
+              <small>Región Metropolitana</small>
             </div>
-          )}
+          </div>
           <button
             className="profile"
             onClick={() => {
@@ -352,7 +357,7 @@ export default function Praxia() {
             <PanelLeft size={16} />
             <span>Mi espacio</span>
             <ChevronRight size={13} />
-            <b>{page === "Focos rojos" ? "Mi cartera" : page}</b>
+            <b>{page === "Focos rojos" ? "Mi cartera" : page === 'Inicio del día' ? homeLabel : page}</b>
           </div>
           <div className="top-actions">
             <button
@@ -413,22 +418,10 @@ export default function Praxia() {
                   </>
                 ) : (
                   <>
-                    <button
-                      onClick={() =>
-                        go(role === roles[0] ? "Focos rojos" : "Administración")
-                      }
-                    >
+                    <button onClick={() => go("Focos rojos")}>
                       Revisar farmacias en foco rojo <ChevronRight size={15} />
                     </button>
-                    <button
-                      onClick={() =>
-                        go(
-                          role === roles[0]
-                            ? "Mis pendientes"
-                            : "Administración",
-                        )
-                      }
-                    >
+                    <button onClick={() => go("Mis pendientes")}>
                       {late} seguimientos vencidos <ChevronRight size={15} />
                     </button>
                   </>
@@ -438,27 +431,27 @@ export default function Praxia() {
           )}
         </header>
         <div className="content">
-          {page === "Inicio del día" ? (
+          {page === 'Inicio del día' && role !== roles[0] ? <ManagementHome role={role} rows={rows} go={go} manage={manage} late={late}/> : page === "Inicio del día" ? (
             <Dashboard
               first={who.split(" ")[0]}
               go={go}
               open={open}
               visit={newVisit}
-              visits={visits}
+              visits={allVisits}
               tasks={tasks}
               plan={plan}
             />
           ) : page === "Registrar visita" ? (
-            <VisitForm
+            <VisitForm owner={role === roles[0] ? who : undefined}
               initial={id}
               save={save}
               author={who}
               cancel={() => open(id)}
             />
           ) : ["Mi cartera", "Focos rojos"].includes(page) ? (
-            <Portfolio
+            <Portfolio owner={role === roles[0] ? who : undefined}
               key={page}
-              visits={visits}
+              visits={allVisits}
               tasks={tasks}
               red={page === "Focos rojos"}
               open={open}
@@ -466,7 +459,7 @@ export default function Praxia() {
           ) : page === "Ficha de farmacia" ? (
             <Detail
               s={stores.find((s) => s.id === id)!}
-              visits={visits}
+              visits={allVisits}
               tasks={tasks}
               visit={newVisit}
             />
@@ -483,32 +476,34 @@ export default function Praxia() {
               open={open}
             />
           ) : page === "Plan del mes" ? (
-            <Planning
+            <>{role !== roles[0] && <section className="panel form-panel"><label>Plan de la nutricionista<select value={planner} onChange={e=>selectPlanner(e.target.value)}>{team.map(name=><option key={name}>{name}</option>)}</select></label></section>}
+            <Planning key={planner} planner={planner}
               plan={plan}
               setPlan={L}
               published={published}
               publish={H}
-              notices={notices.filter((n) => n.to === "Todas" || n.to === who)}
-              visits={visits}
+              notices={notices.filter((n) => n.to === "Todas" || n.to === planner)}
+              visits={allVisits}
               tasks={tasks}
               open={open}
               notify={notify}
-            />
+            /></>
           ) : page !== "Administración" ? (
             <Resources
               key={page}
               page={page}
-              visits={visits}
+              visits={allVisits}
               open={open}
               sessions={sessions}
               setSessions={U}
-              edit={permission || role !== "Nutricionista"}
+              who={who} management={role !== roles[0]}
+              edit={settings.permission(who, "escuela")}
             />
           ) : null}
           <div hidden={page !== "Administración" || role === "Nutricionista"}>
-            <Admin
+            <Admin tab={adminTab} T={setAdminTab} rows={rows}
               role={role}
-              plan={plan}
+              plan={Object.values(plans).flatMap(p=>p.rows)}
               published={published}
               notices={notices}
               setNotices={B}
@@ -552,7 +547,8 @@ export default function Praxia() {
                 onClick={() => {
                   R(r);
                   K(false);
-                  go(i ? "Administración" : "Inicio del día");
+                  setAdminTab('Equipo');
+                  go('Inicio del día');
                 }}
               >
                 <span className="avatar">

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useSettings } from "./settings";
 import { Plus, Copy, Save, Trash2, Store as Shop } from "lucide-react";
 import {
   stores,
@@ -19,17 +20,20 @@ const blank = (): Action => ({
   file: "",
 });
 export default function VisitForm({
-  initial,
+  initial, owner,
   author,
   save,
   cancel,
 }: {
+  owner?:string;
   initial: string;
   author: string;
   save: (v: Visit) => void;
   cancel: () => void;
 }) {
-  const [store, S] = useState(initial),
+  const settings = useSettings();
+  const cartera = stores.filter(s=>!owner || settings.owner(s.id)===owner);
+  const [store, S] = useState(cartera.some(s=>s.id===initial)?initial:cartera[0]?.id ?? ''),
     [date, D] = useState(today),
     [mode, M] = useState("Presencial"),
     [other, O] = useState(""),
@@ -37,7 +41,8 @@ export default function VisitForm({
     [idx, I] = useState(0),
     [err, E] = useState(""),
     [extra, X] = useState("");
-  const act = actions[idx];
+  const employees = settings.roster,
+    act = actions[idx];
   function patch(p: Partial<Action>) {
     A(actions.map((a, i) => (i === idx ? { ...a, ...p } : a)));
     E("");
@@ -70,7 +75,8 @@ export default function VisitForm({
         a.persons.some(
           (p) =>
             !p.topics.length ||
-            ((p.result === outcomes[3] || p.result === outcomes[1]) && !p.due),
+            (p.result === outcomes[3] && !p.kind.trim()) ||
+            ((p.result === outcomes[3] || p.result === outcomes[1]) && (!p.due || p.due < date)),
         ),
     );
     if (!date || date > today || (mode === "Otros" && !other.trim()))
@@ -78,7 +84,7 @@ export default function VisitForm({
     if (bad !== -1) {
       I(bad);
       return E(
-        "Agrega al menos una persona y selecciona un tema por participante. Revisa las fechas de seguimiento.",
+        "Cada gestión necesita participantes y temas. Para un seguimiento, indica el tipo y una fecha igual o posterior a la visita.",
       );
     }
     save({
@@ -111,7 +117,7 @@ export default function VisitForm({
               disabled={actions.some((a) => a.persons.length > 0)}
               onChange={(e) => S(e.target.value)}
             >
-              {stores.map((s) => (
+              {cartera.map((s) => (
                 <option value={s.id} key={s.id}>
                   {s.id} · {s.name}
                 </option>
@@ -164,6 +170,7 @@ export default function VisitForm({
             <Plus size={14} /> Otra gestión
           </button>
         </div>
+        {actions.length>1&&<button className="text-btn" onClick={()=>{A(actions.filter((_,i)=>i!==idx));I(Math.max(0,idx-1));E('')}}>Quitar gestión {idx+1}</button>}
         <label>
           Tipo de gestión
           <select
@@ -175,10 +182,7 @@ export default function VisitForm({
             ))}
           </select>
         </label>
-        <h3>
-          Participantes y temas
-          {act.type === "Reunión o coordinación" && <small> (opcional)</small>}
-        </h3>
+        <h3>Participantes y temas{act.type === "Reunión o coordinación" && <small> (opcional)</small>}</h3>
         <label>
           Agregar de la dotación
           <select
@@ -247,6 +251,12 @@ export default function VisitForm({
               {p.id} · {p.job}
             </small>
             <label>Temas tratados</label>
+            <small>
+              Prioriza:{" "}
+              {Array.from(
+                new Set(["Concurso Impulso G8", ...settings.products]),
+              ).join(" · ")}
+            </small>
             <div className="chips">
               {topics.map((t) => (
                 <button
@@ -305,7 +315,7 @@ export default function VisitForm({
                   Fecha sugerida
                   <input
                     type="date"
-                    value={p.due}
+                    min={date} value={p.due}
                     onChange={(e) => person(p.id, { due: e.target.value })}
                   />
                 </label>
@@ -335,7 +345,19 @@ export default function VisitForm({
             key={idx}
             type="file"
             accept="image/*,application/pdf"
-            onChange={(e) => patch({ file: e.target.files?.[0]?.name || "" })}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (
+                f &&
+                ((!f.type.startsWith("image/") &&
+                  f.type !== "application/pdf") ||
+                  f.size > 10 * 1024 * 1024)
+              ) {
+                E("Selecciona una foto o PDF de hasta 10 MB.");
+                return;
+              }
+              patch({ file: f?.name || "", attachment: f });
+            }}
           />
           {act.file && <small>{act.file}</small>}
         </label>
