@@ -14,12 +14,12 @@ type Settings = {
   frequency: Record<string, number>;
   setFreq: (id: string, n: number) => void;
   covers: Cover[];
-  cover: (r: Cover) => void;
+  cover: (rows: Cover[]) => void;
   products: string[];
   toggle: (s: string) => void;
   permission: (who: string, perm: string) => boolean;
   grant: (who: string, perm: string, v: boolean) => void;
-  owner: (id: string) => string;
+  owner: (id: string, date?: string) => string;
 };
 const C = createContext<Settings | null>(null);
 export const useSettings = () => useContext(C)!;
@@ -34,8 +34,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [rejected,setRejected]=useState<Record<string,string>>({});
   const [batches,setBatches]=useState<Batch[]>([]), [grants,setGrants]=useState<Grant[]>([]), [publicity,setPublicity]=useState<File|null>(null);
   function roster(id:string){const map=new Map(employees(id).map(p=>[p.id,p])); for(const b of batches) if(b.source==='Dotación de personal') for(const [store,num,name,job] of b.rows) if(store===id)map.set(`${id}-${num}`,{id:`${id}-${num}`,name,job});return Array.from(map.values())}
-  const owner = (id: string) =>
-    covers.find((r) => r.store === id && r.start <= today && r.end >= today)
+  const owner = (id: string, date = today) =>
+    covers.find((r) => r.store === id && r.start <= date && r.end >= date)
       ?.who || stores[storeIndex.get(id)!]?.owner || '';
   return (
     <C.Provider
@@ -49,7 +49,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           if (n >= 1 && n <= 4) F({ ...frequency, [id]: n });
         },
         covers,
-        cover: (r) => A([...covers, r]),
+        cover: (rows) => A(prev => [...prev, ...rows]),
         products,
         toggle: (s) =>
           P(

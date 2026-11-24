@@ -48,10 +48,15 @@ export default function Admin({
   }
   const settings = useSettings(), users = team;
   const load = (u: string) => rows.find(r => r.name === u)?.total ?? 0;
-  const owner = (id:string) => draft[id] ?? settings.owner(id);
-  const moved = stores.filter(s => owner(s.id) !== settings.owner(s.id));
+  const [search, setSearch] = useState(''), [page, setPage] = useState(0);
+  const matching = stores.filter(s => `${s.id} ${s.name} ${s.zone} ${settings.owner(s.id, from)}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const through = from ? new Date(Date.parse(`${from}T00:00:00Z`) + 14 * 86400000).toISOString().slice(0, 10) : '';
+  const owner = (id:string) => draft[id] ?? settings.owner(id, from);
+  const moved = stores.filter(s => owner(s.id) !== settings.owner(s.id, from));
+  const overlaps = (id:string, start:string, finish:string) => settings.covers.some(c => c.store === id && c.start <= finish && c.end >= start);
+  const conflict = moved.some(s => overlaps(s.id, from, through));
   const orphan = moved.filter(s => !users.includes(owner(s.id)));
-  const affected = plan.filter(r => r.date >= from && moved.some(s=>s.id===r.store)).length;
+  const affected = plan.filter(r => r.date >= from && r.date <= through && moved.some(s=>s.id===r.store)).length;
   return (
     <>
       <div className="page-intro">
@@ -157,8 +162,7 @@ export default function Admin({
               <>
                 <h2>Borrador de asignación quincenal</h2>
                 <p>
-                  Cartera de {team[0]} · Ruta 08. Cambia la responsable de las
-                  farmacias que se redistribuyen.
+                  Selecciona las farmacias que cambiarán de responsable durante 15 días. Al finalizar la quincena recuperan su asignación habitual.
                 </p>
                 <div className="form-grid">
                   {team.map((u) => (
@@ -172,6 +176,7 @@ export default function Admin({
                     </div>
                   ))}
                 </div>
+                <label>Filtrar farmacias del borrador<input type="search" placeholder="Código, nombre, zona o responsable" value={search} onChange={e=>{setSearch(e.target.value);setPage(0)}} /></label>
                 <div className="scroll">
                   <table>
                     <thead>
@@ -184,7 +189,7 @@ export default function Admin({
                       </tr>
                     </thead>
                     <tbody>
-                      {stores.slice(0, 16).map((s) => (
+                      {matching.slice(page * 16, (page + 1) * 16).map((s) => (
                         <tr key={s.id}>
                           <td>
                             {s.id} · {s.name}
@@ -193,6 +198,7 @@ export default function Admin({
                           <td>{s.supervisor}</td>
                           <td>
                             <select
+                              aria-label={`Responsable de ${s.id}`}
                               value={owner(s.id)}
                               onChange={(e) =>
                                 X({ ...draft, [s.id]: e.target.value })
@@ -208,6 +214,7 @@ export default function Admin({
                     </tbody>
                   </table>
                 </div>
+                <div className="inline"><button className="secondary" disabled={!page} onClick={()=>setPage(page-1)}>Anterior</button><span aria-live="polite">{matching.length ? `Página ${page+1} de ${Math.ceil(matching.length/16)}` : 'Sin coincidencias'}</span><button className="secondary" disabled={(page+1)*16>=matching.length} onClick={()=>setPage(page+1)}>Siguiente</button></div>
                 <label>
                   Vigente desde
                   <input
@@ -228,12 +235,15 @@ export default function Admin({
                     Asígnalas antes de confirmar.
                   </p>
                 )}
+                {through && <p>Vigente hasta el {dateText(through)}, inclusive.</p>}
+                {conflict && <p role="alert">Una farmacia modificada ya tiene una asignación en esas fechas. Cambia la fecha o retírala del borrador.</p>}
                 <button
                   className="primary"
-                  disabled={!moved.length || orphan.length > 0 || !from}
+                  disabled={!moved.length || orphan.length > 0 || !from || from < today || conflict}
                   onClick={() => {
                     if (from < today)
                       return notify("La vigencia no puede ser anterior a hoy.");
+                    settings.cover(moved.map(s=>({store:s.id,who:owner(s.id),start:from,end:through})));
                     record(
                       `Borrador quincenal confirmado: ${moved.length} farmacias desde el ${dateText(from)}`,
                     );
@@ -298,16 +308,10 @@ export default function Admin({
                   !date ||
                   !end ||
                   date > end ||
-                  records.some(
-                    (r) =>
-                      r.tab === tab &&
-                      r.store === store &&
-                      r.date <= end &&
-                      r.end >= date,
-                  )
+                  overlaps(store, date, end)
                 )
                   return notify("Vigencia no válida o cobertura superpuesta.");
-                settings.cover({ store, who, start: date, end });
+                settings.cover([{ store, who, start: date, end }]);
                 record(
                   `${store} → ${who} · ${dateText(date)} al ${dateText(end)}`,
                 );
@@ -316,6 +320,7 @@ export default function Admin({
               Confirmar vigencia
             </button>
               </>)}
+            {settings.covers.length > 0 && <details><summary>Asignaciones confirmadas ({settings.covers.length})</summary>{settings.covers.map(c=><p key={c.store+c.start}>{c.store} · {c.who} · {dateText(c.start)} al {dateText(c.end)}</p>)}</details>}
           </>
         ) : tab === "Autorizaciones" ? (
           <>
