@@ -20,17 +20,20 @@ const blank = (): Action => ({
   file: "",
 });
 export default function VisitForm({
-  initial,
+  initial, owner,
   author,
   save,
   cancel,
 }: {
+  owner?:string;
   initial: string;
   author: string;
   save: (v: Visit) => void;
   cancel: () => void;
 }) {
-  const [store, S] = useState(initial),
+  const settings = useSettings();
+  const cartera = stores.filter(s=>!owner || settings.owner(s.id)===owner);
+  const [store, S] = useState(cartera.some(s=>s.id===initial)?initial:cartera[0]?.id ?? ''),
     [date, D] = useState(today),
     [mode, M] = useState("Presencial"),
     [other, O] = useState(""),
@@ -38,8 +41,7 @@ export default function VisitForm({
     [idx, I] = useState(0),
     [err, E] = useState(""),
     [extra, X] = useState("");
-  const settings = useSettings(),
-    employees = settings.roster,
+  const employees = settings.roster,
     act = actions[idx];
   function patch(p: Partial<Action>) {
     A(actions.map((a, i) => (i === idx ? { ...a, ...p } : a)));
@@ -115,7 +117,7 @@ export default function VisitForm({
               disabled={actions.some((a) => a.persons.length > 0)}
               onChange={(e) => S(e.target.value)}
             >
-              {stores.map((s) => (
+              {cartera.map((s) => (
                 <option value={s.id} key={s.id}>
                   {s.id} · {s.name}
                 </option>

@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Route,
 } from "lucide-react";
+import {useSettings} from './settings';
 import { today, stores, status, type Visit, type Task, type Row } from "./data";
 export function Spark({ i }: { i: number }) {
   const lines = [
@@ -60,7 +61,8 @@ export default function Dashboard({
   plan: Row[];
   first?: string;
 }) {
-  const red = stores.filter((s) => status(s, visits, tasks).p === 1).length,
+  const settings = useSettings();
+  const red = stores.filter((s) => settings.owner(s.id) === 'Camila Morales' && status({...s,school:settings.school(s.id)}, visits, tasks).p === 1).length,
     late = tasks.filter((t) => !t.closed && t.date < today).length,
     rows = plan.filter((r) => r.date === today);
   const data = [

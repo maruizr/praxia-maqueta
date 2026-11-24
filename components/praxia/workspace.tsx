@@ -41,7 +41,7 @@ import {
   roles,
   names,
   stores,
-  initialPlan,
+  demoPlans, team,
   seedTasks,
   type Visit,
   type Task,
@@ -109,8 +109,8 @@ function App({ ingreso }: { ingreso: boolean }) {
     [id, S] = useState(stores[0].id),
     [visits, V] = useState<Visit[]>([]),
     [tasks, T] = useState<Task[]>(seedTasks),
-    [plan, L] = useState<Row[]>(initialPlan),
-    [published, H] = useState(false),
+    [plans, setPlans] = useState(demoPlans),
+    [selectedPlanner, selectPlanner] = useState(team[0]),
     [toast, A] = useState(""),
     [notices, B] = useState<Notice[]>([
       {
@@ -142,6 +142,10 @@ function App({ ingreso }: { ingreso: boolean }) {
     off = offline || !network,
     late = tasks.filter((t) => !t.closed && t.date < today).length,
     timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const planner = role === roles[0] ? who : selectedPlanner;
+  const {rows:plan, published} = plans[planner];
+  const L = (rows:Row[]) => setPlans(prev=>({...prev,[planner]:{...prev[planner],rows}}));
+  const H = (published:boolean) => setPlans(prev=>({...prev,[planner]:{...prev[planner],published}}));
   function notify(s: string) {
     A(s);
     if (timer.current) clearTimeout(timer.current);
@@ -256,7 +260,7 @@ function App({ ingreso }: { ingreso: boolean }) {
     }
   }
   const allVisits:Visit[]=[...visits,...settings.batches.filter(b=>b.source==='Histórico de visitas').flatMap(b=>b.rows.map(([store,date,mode,author],i)=>({id:'historico-'+i,store,date,mode,author,actions:[],other:'Histórico importado',queued:false})))];
-  const rows = useTeamSummary(allVisits, tasks, plan, published);
+  const rows = useTeamSummary(allVisits, tasks, plans);
   const [adminTab, setAdminTab] = useState('Equipo');
   const homeLabel = role === roles[0] ? 'Inicio del día' : role === 'Administrador' ? 'Panel de administración' : 'Panel de jefatura';
   function manage(tab:string) { setAdminTab(tab); go('Administración'); }
@@ -438,14 +442,14 @@ function App({ ingreso }: { ingreso: boolean }) {
               plan={plan}
             />
           ) : page === "Registrar visita" ? (
-            <VisitForm
+            <VisitForm owner={role === roles[0] ? who : undefined}
               initial={id}
               save={save}
               author={who}
               cancel={() => open(id)}
             />
           ) : ["Mi cartera", "Focos rojos"].includes(page) ? (
-            <Portfolio
+            <Portfolio owner={role === roles[0] ? who : undefined}
               key={page}
               visits={allVisits}
               tasks={tasks}
@@ -472,17 +476,18 @@ function App({ ingreso }: { ingreso: boolean }) {
               open={open}
             />
           ) : page === "Plan del mes" ? (
-            <Planning
+            <>{role !== roles[0] && <section className="panel form-panel"><label>Plan de la nutricionista<select value={planner} onChange={e=>selectPlanner(e.target.value)}>{team.map(name=><option key={name}>{name}</option>)}</select></label></section>}
+            <Planning key={planner} planner={planner}
               plan={plan}
               setPlan={L}
               published={published}
               publish={H}
-              notices={notices.filter((n) => n.to === "Todas" || n.to === who)}
+              notices={notices.filter((n) => n.to === "Todas" || n.to === planner)}
               visits={allVisits}
               tasks={tasks}
               open={open}
               notify={notify}
-            />
+            /></>
           ) : page !== "Administración" ? (
             <Resources
               key={page}
@@ -498,7 +503,7 @@ function App({ ingreso }: { ingreso: boolean }) {
           <div hidden={page !== "Administración" || role === "Nutricionista"}>
             <Admin tab={adminTab} T={setAdminTab} rows={rows}
               role={role}
-              plan={plan}
+              plan={Object.values(plans).flatMap(p=>p.rows)}
               published={published}
               notices={notices}
               setNotices={B}

@@ -170,7 +170,7 @@ export function Resources({
         "Farmacias visitadas",
         new Set([
           ...stores
-            .filter((s) => s.last.startsWith("2026-11"))
+            .filter((s) => settings.owner(s.id) === who && s.last.startsWith("2026-11"))
             .map((s) => s.id),
           ...visits
             .filter((v) => v.date.startsWith("2026-11"))

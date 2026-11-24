@@ -8,7 +8,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import {
-  activities,
+  activities, team,
   status,
   today,
   stores,
@@ -20,7 +20,7 @@ import {
 import {useSettings} from './settings';
 export type Notice = { date: string; title: string; to: string; hotel: string };
 export default function Planning({
-  plan,
+  plan, planner,
   setPlan,
   published,
   publish,
@@ -30,6 +30,7 @@ export default function Planning({
   open,
   notify,
 }: {
+  planner:string;
   plan: Row[];
   setPlan: (r: Row[]) => void;
   published: boolean;
@@ -41,12 +42,15 @@ export default function Planning({
   notify: (s: string) => void;
 }) {
   const settings=useSettings();
+  const cartera = stores.filter(s=>settings.owner(s.id)===planner);
+  const rejected = Object.entries(settings.rejected).filter(([id])=>settings.owner(id)===planner);
+  const firstStore = cartera[0]?.id ?? '';
   const [week, W] = useState(false),
     [start, B] = useState(23),
     [tab, T] = useState("Actividades"),
     [add, A] = useState(false),
     [date, D] = useState(today),
-    [store, S] = useState(stores[0].id),
+    [store, S] = useState(firstStore),
     [mode, M] = useState("Presencial"),
     [type, Y] = useState(activities[0]),
 
@@ -69,10 +73,10 @@ export default function Planning({
     notify("Actividad retirada del plan.");
     requestAnimationFrame(() => document.getElementById("add-plan-activity")?.focus());
   }
-  function showForm(row: Row | null, suggestedStore = stores[0].id) {
+  function showForm(row: Row | null, suggestedStore = firstStore) {
     setConfirmRemoval(false);
     setEditing(row);
-    D(row?.date ?? (suggestedStore === stores[0].id ? today : "2026-11-30"));
+    D(row?.date ?? (suggestedStore === firstStore ? today : "2026-11-30"));
     S(row?.store ?? suggestedStore);
     M(row?.mode ?? "Presencial");
     Y(row?.type ?? activities[0]);
@@ -81,6 +85,7 @@ export default function Planning({
     requestAnimationFrame(() => document.getElementById("plan-date")?.focus());
   }
   function save() {
+    if (!store || (!cartera.some(s=>s.id===store) && editing?.store !== store)) return notify('Selecciona una farmacia de esta cartera.');
     if (!date.startsWith("2026-11"))
       return notify("Selecciona una fecha de noviembre.");
     const remaining = plan.filter((r) => !editing || r.store !== editing.store || r.date !== editing.date);
@@ -99,7 +104,7 @@ export default function Planning({
   return (
     <>
       <div className="page-intro">
-        <div className="eyebrow">Mi planificación · Ruta 08</div>
+        <div className="eyebrow">Ruta {String(8+team.indexOf(planner)).padStart(2,'0')} · {planner}</div>
         <div className="heading-line">
           <h1>Plan del mes</h1>
           <span className="pill green">
@@ -158,7 +163,7 @@ export default function Planning({
               <label>
                 Farmacia
                 <select value={store} onChange={(e) => S(e.target.value)}>
-                  {stores.map((s) => (
+                  {stores.filter(s=>settings.owner(s.id)===planner || editing?.store===s.id).map((s) => (
                     <option value={s.id} key={s.id}>
                       {s.name} · {s.id}
                     </option>
@@ -334,8 +339,8 @@ export default function Planning({
                 placeholder="Indica un motivo antes de rechazar"
               />
             </label>
-            {Object.keys(settings.rejected).length>0 && <details><summary>Sugerencias rechazadas ({Object.keys(settings.rejected).length})</summary>{Object.entries(settings.rejected).map(([id,motivo])=><p key={id}>{stores.find(s=>s.id===id)?.name} · {motivo}</p>)}</details>}
-            {stores.filter(s=>settings.owner(s.id)==='Camila Morales').map(s=>({...s,freq:settings.frequency[s.id]||s.freq}))
+            {rejected.length>0 && <details><summary>Sugerencias rechazadas ({rejected.length})</summary>{rejected.map(([id,motivo])=><p key={id}>{stores.find(s=>s.id===id)?.name} · {motivo}</p>)}</details>}
+            {cartera.map(s=>({...s,school:settings.school(s.id),freq:settings.frequency[s.id]||s.freq}))
               .filter(
                 (s) =>
                   [

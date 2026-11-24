@@ -19,11 +19,12 @@ import {
   today,
 } from "./data";
 export function Portfolio({
-  red,
+  owner, red,
   visits,
   tasks,
   open,
 }: {
+  owner?:string;
   red: boolean;
   visits: Visit[];
   tasks: Task[];
@@ -36,8 +37,8 @@ export function Portfolio({
     [reg, R] = useState("");
   const settings = useSettings();
   const list = stores
-    .filter((s) => settings.owner(s.id) === "Camila Morales")
-    .map((s) => ({ ...s, freq: settings.frequency[s.id] || s.freq }))
+    .filter((s) => !owner || settings.owner(s.id) === owner)
+    .map((s) => ({ ...s, school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq }))
     .filter(
       (s) =>
         (s.name + " " + s.id).toLowerCase().includes(q.toLowerCase()) &&
@@ -50,7 +51,7 @@ export function Portfolio({
     <>
       <div className="page-intro">
         <div className="eyebrow">Trabajo en terreno</div>
-        <h1>Mi cartera</h1>
+        <h1>{owner ? 'Mi cartera' : 'Cartera del equipo'}</h1>
         <p>Consulta tus farmacias y prioriza tu próxima visita.</p>
       </div>
       <section className="panel form-panel">
@@ -83,7 +84,7 @@ export function Portfolio({
             </select>
           ))}
         </div>
-        <small>{list.length} farmacias · Ruta 08</small>
+        <small>{list.length} farmacias · {owner || 'Todo el equipo'}</small>
         {list.map((s) => (
           <button key={s.id} className="simple-row" onClick={() => open(s.id)}>
             <i className="activity-icon">

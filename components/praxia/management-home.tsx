@@ -1,13 +1,14 @@
 import { ArrowUpRight, CalendarDays, ClipboardList, FileInput, Flag, Layers, MapPin, ShieldCheck, Store, Users } from 'lucide-react';
-import { stores, status, today, type Task, type Visit, type Row } from './data';
+import { stores, status, today, type Task, type Visit, type MonthlyPlan } from './data';
 import { team, useSettings } from './settings';
 
-export function useTeamSummary(visits: Visit[], tasks: Task[], plan: Row[], published: boolean) {
+export function useTeamSummary(visits: Visit[], tasks: Task[], plans: Record<string,MonthlyPlan>) {
   const settings = useSettings();
   return team.map(name => {
     const owned = stores.filter(s => settings.owner(s.id) === name);
     const states = owned.map(s => status({...s, school: settings.school(s.id), freq: settings.frequency[s.id] ?? s.freq}, visits, tasks));
-    const planned = plan.filter(r => owned.some(s => s.id === r.store)).length;
+    const {rows, published} = plans[name];
+    const planned = rows.length;
     return {name, total: owned.length, covered: states.filter(s => s.count > 0).length, red: states.filter(s => s.p === 1).length, planned, planState: planned ? published ? 'Publicado' : 'Borrador' : 'Sin actividades'};
   });
 }

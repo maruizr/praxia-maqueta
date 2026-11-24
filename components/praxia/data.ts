@@ -55,14 +55,18 @@ const places = [
   "Estación Central",
   "Conchalí",
 ];
-export const stores = Array.from({ length: 56 }, (_, i) => {
+export const team = ['Camila Morales','Francisca Díaz','Paula Fuentes','Josefa Ruiz','Isidora Tapia','Daniela Araya','Fernanda Vega','Carolina Leiva','Martina Pino','Constanza León','Javiera Bravo','Catalina Paz'];
+export const stores = Array.from({ length: team.length * 56 }, (_, index) => {
+  const route = Math.floor(index / 56), i = index % 56;
+  const activityIndex = (i + route * 3) % 56;
   const zone = i % 3 === 0 ? "Oriente" : i % 3 === 1 ? "Centro" : "Sur";
   return {
-    id: i % 3 === 1 ? "F" + (1063 + i) : "CL" + (2048 + i),
+    owner: team[route],
+    id: i % 3 === 1 ? "F" + (1063 + index) : "CL" + (2048 + index),
     name:
       "Farmacia " +
       places[i % 16] +
-      ["", " Norte", " Sur", " Plaza"][Math.floor(i / 16)],
+      ["", " Norte", " Sur", " Plaza"][Math.floor(i / 16)] + (route ? ` · Sector ${route + 1}` : ''),
     place: places[i % 16],
     zone,
     region: "Metropolitana",
@@ -73,8 +77,8 @@ export const stores = Array.from({ length: 56 }, (_, i) => {
       "Av. Irarrázaval 3480",
       "Av. Apoquindo 5210",
     ][i % 3],
-    last: i < 4 ? "2026-08-18" : i < 36 ? "2026-10-22" : "2026-11-17",
-    training: i < 4 ? "2026-08-20" : "2026-11-10",
+    last: activityIndex < 4 + route % 3 ? "2026-08-18" : activityIndex < 36 - route ? "2026-10-22" : "2026-11-17",
+    training: activityIndex < 4 + route % 3 ? "2026-08-20" : "2026-11-10",
     school: "2026-11-05",
     freq: 1,
   };
@@ -89,7 +93,7 @@ export const employees = (id: string) =>
     "Josefina Díaz",
   ].map((name, i) => ({
     name,
-    id: id + "-" + (1000 + stores.findIndex((s) => s.id === id) * 5 + i),
+    id: id + "-" + (1000 + (storeIndex.get(id) ?? -1) * 5 + i),
     job: [
       "Química farmacéutica",
       "Auxiliar de farmacia",
@@ -142,6 +146,9 @@ export const initialPlan: Row[] = stores
     mode: i % 3 === 2 ? "Online" : "Presencial",
     type: activities[[0, 3, 4][i % 3]],
   }));
+export const storeIndex = new Map(stores.map((s,i)=>[s.id,i]));
+export type MonthlyPlan = {rows:Row[]; published:boolean};
+export const demoPlans:Record<string,MonthlyPlan> = Object.fromEntries(team.map((name,route)=>[name,{published:route % 3 !== 0, rows:initialPlan.slice(0,12-route%4).map((r,i)=>({...r,store:stores[route*56+i].id}))}]));
 export const seedTasks: Task[] = stores
   .slice(0, 5)
   .map((s, i) => ({

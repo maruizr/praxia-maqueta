@@ -1,22 +1,9 @@
 "use client";
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { stores, today, employees } from "./data";
+import { stores, today, employees, team, storeIndex } from "./data";
 import type {Batch} from './import-data';
 type Grant={who:string;info:string;territory:string;start:string;end:string};
-export const team = [
-  "Camila Morales",
-  "Francisca Díaz",
-  "Paula Fuentes",
-  "Josefa Ruiz",
-  "Isidora Tapia",
-  "Daniela Araya",
-  "Fernanda Vega",
-  "Carolina Leiva",
-  "Martina Pino",
-  "Constanza León",
-  "Javiera Bravo",
-  "Catalina Paz",
-];
+export {team};
 export type Cover = { store: string; who: string; start: string; end: string };
 type Settings = {
   rejected:Record<string,string>; rejectSuggestion:(id:string,reason:string)=>void;
@@ -49,13 +36,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   function roster(id:string){const map=new Map(employees(id).map(p=>[p.id,p])); for(const b of batches) if(b.source==='Dotación de personal') for(const [store,num,name,job] of b.rows) if(store===id)map.set(`${id}-${num}`,{id:`${id}-${num}`,name,job});return Array.from(map.values())}
   const owner = (id: string) =>
     covers.find((r) => r.store === id && r.start <= today && r.end >= today)
-      ?.who || team[0];
+      ?.who || stores[storeIndex.get(id)!]?.owner || '';
   return (
     <C.Provider
       value={{
         rejected,rejectSuggestion:(id,reason)=>setRejected(prev=>({...prev,[id]:reason})),
         batches,commitBatch:b=>setBatches(prev=>b.source==='Histórico de visitas'&&prev.some(x=>x.source===b.source)?prev:[...prev,b]),roster,
-        school:id=>[stores.find(s=>s.id===id)!.school,...batches.filter(b=>b.source==='Asistencia de Simi Escuela').flatMap(b=>b.rows.filter(r=>r[0]===id).map(r=>r[1]))].sort().at(-1)!,
+        school:id=>[stores[storeIndex.get(id)!].school,...batches.filter(b=>b.source==='Asistencia de Simi Escuela').flatMap(b=>b.rows.filter(r=>r[0]===id).map(r=>r[1]))].sort().at(-1)!,
         approve:g=>setGrants(prev=>[...prev,g]),allowed:(who,info,id)=>owner(id)===who||grants.some(g=>g.who===who&&(g.info===info||(info==='Ventas'&&g.info==='Exportar ventas'))&&g.start<=today&&g.end>=today&&g.territory===stores.find(s=>s.id===id)?.zone),publicity,setPublicity,
         frequency,
         setFreq: (id, n) => {
