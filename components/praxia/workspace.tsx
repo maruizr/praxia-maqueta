@@ -1,339 +1,422 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
-import { SettingsProvider, useSettings } from "./settings";
+import { useEffect, useState, useRef, Component, type ReactNode } from "react";
 import {
   LayoutDashboard,
+  Store,
   CalendarDays,
-  Store as Shop,
   ListChecks,
-  ChartNoAxesColumnIncreasing,
-  GraduationCap,
+  ClipboardPenLine,
+  UserRoundPlus,
   Trophy,
-  Package,
-  SlidersHorizontal,
-  ChevronDown,
-  ChevronRight,
-  ChevronsUpDown,
-  CloudCheck,
-  CloudOff,
+  Megaphone,
+  GraduationCap,
+  ChartNoAxesColumnIncreasing,
+  MessageSquareText,
+  Settings,
   Bell,
   Menu,
   X,
+  ChevronDown,
+  ChevronRight,
   PanelLeft,
-  MapPin,
-  Route,
-  ArrowRight,
+  ChevronsUpDown,
+  BriefcaseBusiness,
+  Users,
+  Upload,
+  ShieldCheck,
+  Plane,
+  Layers,
+  BookUser,
   Check,
-  Compass,
-  Wifi,
-  UserRound,
+  WifiOff,
+  Sun,
   LogOut,
+  Download,
+  House,
+  MapPin,
+  type LucideIcon,
 } from "lucide-react";
+import { SettingsProvider, useSettings } from "./settings";
+import { useLocal, shifted } from "./local";
 import Dashboard from "./dashboard";
-import {Inventory,Satisfaction} from './commercial';
 import VisitForm from "./visit";
-import { Detail, Portfolio, Tasks } from "./portfolio";
+import VisitDetail from "./visit-detail";
+import { Portfolio, Detail, Tasks } from "./portfolio";
 import Planning, { type Notice } from "./planning";
 import { Resources, type Session } from "./resources";
-import Admin from "./admin";
-import ManagementHome, {useTeamSummary} from './management-home';
+import { Training, Commercial, Intro, Table } from "./programs";
+import { Operations } from "./operations";
+import { examples, reconcileTasks, outstanding, metrics } from "./records";
 import {
-  today,
-  roles,
-  names,
   stores,
-  demoPlans, team,
+  team,
+  today,
+  dateText,
+  demoPlans,
   seedTasks,
+  status,
   type Visit,
   type Task,
-  type Row,
 } from "./data";
-const groups = [
-  {
-    title: "Espacio de trabajo",
-    items: [
-      ["Inicio del día", LayoutDashboard],
+const home = "Inicio diario";
+type Group = [string, [string, LucideIcon][]];
+const base: Group[] = [
+  [
+    "Espacio de trabajo",
+    [
+      [home, LayoutDashboard],
+      ["Registrar gestión", ClipboardPenLine],
+      ["Farmacias", Store],
+      ["Pendientes", ListChecks],
       ["Plan del mes", CalendarDays],
-      ["Mi cartera", Shop],
-      ["Mis pendientes", ListChecks],
-      ["Mi desempeño", ChartNoAxesColumnIncreasing],
     ],
-  },
-  {
-    title: "Recursos comerciales",
-    items: [
+  ],
+  [
+    "Formación y seguimiento",
+    [
+      ["Nuevos ingresos", UserRoundPlus],
+      ["Concursos", Trophy],
+      ["Campañas", Megaphone],
       ["Simi Escuela", GraduationCap],
-      ["Ventas y concursos", Trophy],
-      ["Inventario G8", Package],
-      ["Encuesta de satisfacción", ListChecks],
     ],
-  },
-] as const;
-function Brand() {
-  return (
-    <div className="brand">
-      <svg viewBox="0 0 44 44" width="40" height="40" aria-hidden="true">
-        <g fill="#b6d9ac">
-          <path id="p" d="M21 21C10 22 3 17 4 7c10-1 18 4 17 14Z" />
-          <use href="#p" transform="rotate(90 22 22)" />
-          <use href="#p" transform="rotate(180 22 22)" />
-          <use href="#p" transform="rotate(270 22 22)" />
-        </g>
-      </svg>
-      <strong>Praxia</strong>
+  ],
+  [
+    "Resultados",
+    [
+      ["Mi desempeño", ChartNoAxesColumnIncreasing],
+      ["Encuestas", MessageSquareText],
+    ],
+  ],
+];
+const admins: [string, LucideIcon][] = [
+  ["Revisión del equipo", Users],
+  ["Carteras", Layers],
+  ["Dotación", BookUser],
+  ["Cargas de archivos", Upload],
+  ["Permisos designados", ShieldCheck],
+  ["Indicadores", ChartNoAxesColumnIncreasing],
+];
+const readRoute = () => {
+  const [page, id] = location.hash.slice(1).split("/").map(decodeURIComponent);
+  return { page: page || home, id: id || "" };
+};
+const emptyTasks = [
+  ...seedTasks,
+  { ...seedTasks[0], id: "seed-cancel", closed: true, cancelled: true },
+];
+class Recovery extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <section className="error-screen">
+        <h1>No pudimos cargar tu espacio</h1>
+        <p>Comprueba que el navegador permita guardar datos.</p>
+        <button className="primary" onClick={() => location.reload()}>
+          Reintentar
+        </button>
+      </section>
+    ) : (
+      this.props.children
+    );
+  }
+}
+export default function Praxia({ ingreso = false }: { ingreso?: boolean }) {
+  const [ready, R] = useState(false);
+  useEffect(() => {
+    R(true);
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator)
+      navigator.serviceWorker.register("/praxia-worker.js").catch(() => {});
+  }, []);
+  return ready ? (
+    <Recovery>
+      <SettingsProvider>
+        <Workspace ingreso={ingreso} />
+      </SettingsProvider>
+    </Recovery>
+  ) : (
+    <div role="status" className="workspace-loading">
+      Cargando Praxia…
     </div>
   );
 }
-const queueDB = () =>
-  new Promise<IDBDatabase>((res, rej) => {
-    const r = indexedDB.open("praxia-cola-demo", 1);
-    r.onupgradeneeded = () =>
-      r.result.createObjectStore("visitas", { keyPath: "id" });
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
-export default function Praxia({ ingreso = false }: { ingreso?: boolean }) {
-  return (
-    <SettingsProvider>
-      <App ingreso={ingreso} />
-    </SettingsProvider>
-  );
-}
-function App({ ingreso }: { ingreso: boolean }) {
-  const settings = useSettings();
-  const [page, G] = useState("Inicio del día"),
-    [role, R] = useState(roles[0]),
-    [picker, K] = useState(ingreso),
-    [mobile, M] = useState(false),
-    [pop, P] = useState(""),
-    [offline, O] = useState(false),
-    [network, N] = useState(true),
-    [id, S] = useState(stores[0].id),
-    [visits, V] = useState<Visit[]>([]),
-    [tasks, T] = useState<Task[]>(seedTasks),
-    [plans, setPlans] = useState(demoPlans),
-    [selectedPlanner, selectPlanner] = useState(team[0]),
-    [toast, A] = useState(""),
-    [notices, B] = useState<Notice[]>([
+function Workspace({ ingreso }: { ingreso: boolean }) {
+  const ctx = useSettings(),
+    [role, R] = useLocal("perfil", "Nutricionista"),
+    admin = role === "Administradora",
+    who = admin ? "Paula Fuentes" : team[0];
+  const [route, G] = useState(readRoute),
+    [menu, M] = useState(false),
+    [picker, K] = useState(ingreso || !role),
+    [online, N] = useState(navigator.onLine),
+    [message, A] = useState(""),
+    [dark, D] = useLocal("oscuro", false),
+    [records, V] = useLocal<{ visits: Visit[]; tasks: Task[] }>("registros", {
+      visits: examples,
+      tasks: emptyTasks,
+    }),
+    [plans, P] = useLocal("planes", demoPlans),
+    [planner, Y] = useState(team[0]),
+    [sessions, U] = useLocal<Session[]>("jornadas", [
+      { day: 5, title: "Productos naturales" },
+      { day: 12, title: "Atención en farmacia" },
+      { day: 19, title: "Vitamina C" },
+      { day: 26, title: "Práctica en terreno" },
+    ]),
+    [notes, B] = useLocal<Notice[]>("avisos", [
       {
-        title: "Simi Escuela: productos naturales",
-        date: "2026-11-26",
-        to: "Todas",
+        title: "Nuevo ingreso en Farmacia Providencia",
+        date: today,
+        to: team[0],
         hotel: "",
       },
       {
-        title: "Reunión de cierre mensual",
-        date: "2026-11-30",
+        title: "Prioriza las farmacias en foco rojo esta semana.",
+        date: today,
         to: "Todas",
-        hotel: "",
+        hotel: "plan",
       },
     ]),
-    [sessions, U] = useState<Session[]>(
-      [5, 12, 19, 26].map((day, i) => ({
-        day,
-        title: [
-          "Fármacos en terreno",
-          "Vitamina C G8",
-          "Invitada especial",
-          "Productos naturales",
-        ][i],
-      })),
-    ),
-    [permission, Q] = useState(false);
-  const who = names[roles.indexOf(role)],
-    off = offline || !network,
-    late = tasks.filter((t) => !t.closed && t.date < today).length,
-    timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const planner = role === roles[0] ? who : selectedPlanner;
-  const {rows:plan, published} = plans[planner];
-  const L = (rows:Row[]) => setPlans(prev=>({...prev,[planner]:{...prev[planner],rows}}));
-  const H = (published:boolean) => setPlans(prev=>({...prev,[planner]:{...prev[planner],published}}));
+    [seen, Z] = useLocal<string[]>("leidos:" + who, []),
+    [install, I] = useState<any>(null),
+    [help, H] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const blocked = () =>
+      queueMicrotask(() =>
+        notify("Sin conexión. No se guardaron los cambios."),
+      );
+    window.addEventListener("praxia-offline", blocked);
+    const pop = () => {
+        G(readRoute());
+        M(false);
+      },
+      net = () => N(navigator.onLine),
+      prompt = (e: Event) => {
+        e.preventDefault();
+        I(e);
+      },
+      key = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          M(false);
+          if (role) K(false);
+        }
+      };
+    window.addEventListener("hashchange", pop);
+    window.addEventListener("online", net);
+    window.addEventListener("offline", net);
+    window.addEventListener("beforeinstallprompt", prompt);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("praxia-offline", blocked);
+      window.removeEventListener("hashchange", pop);
+      window.removeEventListener("online", net);
+      window.removeEventListener("offline", net);
+      window.removeEventListener("beforeinstallprompt", prompt);
+      window.removeEventListener("keydown", key);
+    };
+  }, [role]);
   function notify(s: string) {
     A(s);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => A(""), 5000);
+    timer.current = setTimeout(() => A(""), 4500);
   }
-  function go(s: string) {
-    G(s);
+  function go(s: string, id = "") {
+    if (s === "Inicio del día") s = home;
+    location.hash =
+      encodeURIComponent(s) + (id ? "/" + encodeURIComponent(id) : "");
+    G({ page: s, id });
     M(false);
-    P("");
-    window.scrollTo({ top: 0, behavior: "instant" });
+    window.scrollTo(0, 0);
   }
-  function open(s: string) {
-    S(s);
-    go("Ficha de farmacia");
+  function announce(title: string, to: string, hotel = "") {
+    B((v) => [{ title, date: today, to, hotel }, ...v]);
   }
-  function newVisit() {
-    if (page !== "Ficha de farmacia") S(stores[0].id);
-    go("Registrar visita");
-  }
-  function pend(v: Visit) {
-    return v.actions.flatMap((a, i) =>
-      a.persons
-        .filter((p) => p.result === "Requiere seguimiento")
-        .map((p) => ({
-          id: v.id + "-" + i + "-" + p.id,
-          store: v.store,
-          name: p.name,
-          kind: p.kind,
-          date: p.due,
-          closed: false,
+  const groups: Group[] = [
+    ...base,
+    ...(admin
+      ? [
+          [
+            "Administración",
+            admins.filter(
+              ([s]) =>
+                s !== "Permisos designados" ||
+                ctx.permission(who, "Gestionar permisos"),
+            ),
+          ] as Group,
+        ]
+      : []),
+  ];
+  if (!admin && ctx.permission(who, "Gestionar permisos"))
+    groups.push(["Permisos", [["Permisos designados", ShieldCheck]]]);
+  if (!admin && ctx.permission(who, "Exportar datos"))
+    groups.push(["Análisis", [["Indicadores", ChartNoAxesColumnIncreasing]]]);
+  const { visits, tasks } = records;
+  const owned = stores.filter(
+      (s) =>
+        ctx.owner(s.id) === who ||
+        ctx.covers.some(
+          (c) =>
+            c.temporary &&
+            c.store === s.id &&
+            c.who === who &&
+            c.start <= today &&
+            c.end >= today,
+        ),
+    ),
+    ownIds = owned.map((s) => s.id),
+    myVisits = admin ? visits : visits.filter((v) => v.author === who),
+    myTasks = admin ? tasks : tasks.filter((t) => ownIds.includes(t.store));
+  const page = route.page,
+    store = stores.find((s) => s.id === route.id),
+    current = visits.find((v) => v.id === route.id),
+    person = admin ? planner : who,
+    plan = plans[person] ?? plans[team[0]];
+  const open = (id: string) => go("Ficha de farmacia", id),
+    view = (id: string) => go("Detalle de visita", id);
+  const canOperate =
+    admin ||
+    page === "Viajes" ||
+    (page === "Permisos designados" &&
+      ctx.permission(who, "Gestionar permisos")) ||
+    (page === "Indicadores" && ctx.permission(who, "Exportar datos"));
+  const auto = Object.entries(plans).flatMap(([name, p]) =>
+    p.rows
+      .filter(
+        (r) =>
+          outstanding(r.date, r.store, visits) &&
+          (name === who ||
+            (admin &&
+              status(stores.find((s) => s.id === r.store)!, visits, tasks).p <=
+                2)),
+      )
+      .map((r) => ({
+        title: "Por regularizar: " + r.store + " · " + dateText(r.date),
+        date: r.date,
+        to: name,
+        hotel: "regularizar",
+      })),
+  );
+  const importedNotices = ctx.batches
+    .filter((b) => b.source === "Nuevos ingresos")
+    .flatMap((b) =>
+      b.rows
+        .filter((r) => admin || ctx.owner(r[0]) === who)
+        .map((r) => ({
+          title: "Nuevo ingreso: " + r[2] + " · " + r[0],
+          date: r[3],
+          to: ctx.owner(r[0]),
+          hotel: "",
         })),
     );
-  }
-  useEffect(() => {
-    const fn = () => N(navigator.onLine);
-    fn();
-    window.addEventListener("online", fn);
-    window.addEventListener("offline", fn);
-    queueDB()
-      .then((db) => {
-        const r = db.transaction("visitas").objectStore("visitas").getAll();
-        r.onsuccess = () => {
-          const rows = r.result as Visit[];
-          V((prev) => [
-            ...prev,
-            ...rows.filter((r) => !prev.some((x) => x.id === r.id)),
-          ]);
-          T((prev) => [
-            ...prev,
-            ...rows
-              .flatMap(pend)
-              .filter((r) => !prev.some((x) => x.id === r.id)),
-          ]);
-          db.close();
-        };
-      })
-      .catch(() => {});
-    return () => {
-      window.removeEventListener("online", fn);
-      window.removeEventListener("offline", fn);
+  const feed = [
+      ...importedNotices,
+      ...notes.filter((n) => admin || n.to === "Todas" || n.to === who),
+      ...auto,
+    ],
+    unread = feed.filter((n) => !seen.includes(n.title)).length;
+  function save(v: Visit, reason = "") {
+    if (!online) return notify("Sin conexión. El borrador se conserva.");
+    const old = visits.find((x) => x.id === v.id);
+    if (old && old.author !== who && !admin) return;
+    const next = {
+      ...v,
+      history: old
+        ? [
+            ...(old.history ?? []),
+            {
+              when: new Date().toLocaleString("es-CL"),
+              who,
+              reason,
+              snapshot: JSON.stringify({ ...old, history: undefined }),
+            },
+          ]
+        : [],
     };
-  }, []);
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        P("");
-        M(false);
-        K(false);
-      }
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, []);
-  async function save(v: Visit) {
-    v.queued = off;
-    v.syncState=off?'Pendiente':'Sincronizado';
-    try {
-      {
-        const db = await queueDB();
-        await new Promise((res, rej) => {
-          const tx = db.transaction("visitas", "readwrite");
-          tx.objectStore("visitas").put(v);
-          tx.oncomplete = () => res(true);
-          tx.onerror = () => rej(tx.error);
-        });
-        db.close();
-      }
-      V([v, ...visits]);
-      T([...pend(v), ...tasks]);
-      open(v.store);
-      notify(
-        off
-          ? "Visita guardada en el dispositivo. Pendiente de sincronizar."
-          : "Visita guardada. Ficha y pendientes actualizados.",
-      );
-    } catch {
-      notify("No se pudo guardar la visita. Intenta nuevamente.");
-    }
+    V({
+      visits: [next, ...visits.filter((x) => x.id !== v.id)],
+      tasks: reconcileTasks(tasks, next),
+    });
+    view(v.id);
+    notify(
+      v.annulled
+        ? "Visita anulada"
+        : old && page !== "Agregar gestión"
+          ? "Visita actualizada"
+          : v.attempt
+            ? "Intento registrado"
+            : "Gestión registrada",
+    );
   }
-  const [scenario,setScenario]=useState('Normal'),[syncing,setSyncing]=useState(false);
-  const queue=visits.filter(v=>v.queued&&v.author===who);
-  async function updateQueue(rows:Visit[]){const db=await queueDB();try{await new Promise<void>((ok,no)=>{const tx=db.transaction('visitas','readwrite');for(const row of rows)tx.objectStore('visitas').put(row);tx.oncomplete=()=>ok();tx.onerror=()=>no(tx.error);tx.onabort=()=>no(tx.error)})}finally{db.close()}V(prev=>prev.map(v=>rows.find(r=>r.id===v.id)??v))}
-  async function sync(){if(off||syncing)return;const pending=queue.filter(v=>v.syncState!=='Conflicto');if(!pending.length)return;setSyncing(true);try{V(prev=>prev.map(v=>pending.some(p=>p.id===v.id)?{...v,syncState:'Sincronizando'}:v));await new Promise(ok=>setTimeout(ok,450));await updateQueue(pending.map(v=>({...v,queued:scenario!=='Normal',syncState:scenario==='Normal'?'Sincronizado':scenario==='Error de conexión'?'Error':'Conflicto'})));notify(scenario==='Normal'?'Registros sincronizados en la maqueta.':'Registros conservados. Revisa la cola para continuar.');setScenario('Normal')}catch{V(prev=>prev.map(v=>pending.some(p=>p.id===v.id)?{...v,syncState:'Error'}:v));notify('No se pudo actualizar la cola. Tus registros se conservan.')}finally{setSyncing(false)}}
-  async function resolve(v:Visit,remote:boolean){if(off)return;const remoteMode=v.mode==='Presencial'?'Online':'Presencial';try{await updateQueue([{...v,mode:remote?remoteMode:v.mode,queued:false,syncState:'Sincronizado',resolution:{device:v.mode,remote:remoteMode,choice:remote?'Servidor':'Dispositivo'}}]);notify('Conflicto resuelto. Ambas versiones de la modalidad quedan en el historial.')}catch{notify('No se pudo confirmar. El conflicto sigue abierto.')}}
-  const allVisits:Visit[]=[...visits,...settings.batches.filter(b=>b.source==='Histórico de visitas').flatMap(b=>b.rows.map(([store,date,mode,author],i)=>({id:'historico-'+i,store,date,mode,author,actions:[],other:'Histórico importado',queued:false})))];
-  const rows = useTeamSummary(allVisits, tasks, plans);
-  const [adminTab, setAdminTab] = useState('Equipo');
-  const homeLabel = role === roles[0] ? 'Inicio del día' : role === 'Administrador' ? 'Panel de administración' : 'Panel de jefatura';
-  function manage(tab:string) { setAdminTab(tab); go('Administración'); }
-  const count = queue.length;
+  const performance = metrics(
+    myVisits,
+    admin ? stores.map((s) => s.id) : ownIds,
+  );
+  const choose = (r: string) => {
+    R(r);
+    K(false);
+    go(home);
+  };
+  const nav = (s: string, Icon: LucideIcon) => (
+    <button
+      key={s}
+      onClick={() => go(s)}
+      className={
+        "nav-link " +
+        (page === s || (s === "Farmacias" && page === "Ficha de farmacia")
+          ? "active"
+          : "")
+      }
+      aria-current={page === s ? "page" : undefined}
+    >
+      <Icon size={17} />
+      {s}
+      {s === "Pendientes" && (
+        <em>{myTasks.filter((t) => !t.closed && t.date <= today).length}</em>
+      )}
+    </button>
+  );
   return (
-    <div className="shell">
-      {mobile && (
+    <div className={"shell " + (dark ? "dark-shell" : "")}>
+      {menu && (
         <button
           className="scrim"
           aria-label="Cerrar menú"
           onClick={() => M(false)}
         />
       )}
-      <aside className={mobile ? "sidebar shown" : "sidebar"}>
+      <aside className={"sidebar " + (menu ? "shown" : "")}>
         <div className="brand-block">
-          <Brand />
+          <div className="brand">
+            <span className="brand-symbol" aria-hidden>
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+            <strong>Praxia</strong>
+          </div>
           <p>Del conocimiento a la acción</p>
         </div>
-        <nav>
-          {groups.map((g) => (
-            <div className="nav-group" key={g.title}>
-              <div className="nav-label">{g.title}</div>
-              {g.items.map(([s, Icon]) => (
-                <button
-                  key={s}
-                  onClick={() => go(s)}
-                  className={
-                    page === s ||
-                    (s === "Mi cartera" &&
-                      [
-                        "Ficha de farmacia",
-                        "Focos rojos",
-                        "Registrar visita",
-                      ].includes(page))
-                      ? "nav-link active"
-                      : "nav-link"
-                  }
-                >
-                  <Icon size={18} />
-                  {s === 'Inicio del día' ? homeLabel : s}
-                  {s === "Mis pendientes" && late > 0 && <em>{late}</em>}
-                </button>
-              ))}
+        <nav aria-label="Navegación principal">
+          {groups.map(([label, items]) => (
+            <div className="nav-group" key={label}>
+              <div className="nav-label">{label}</div>
+              {items.map(([s, Icon]) => nav(s, Icon))}
             </div>
           ))}
-          {role !== roles[0] && (
-            <button className="nav-link" onClick={() => go("Administración")}>
-              <SlidersHorizontal size={18} />
-              Administración
-            </button>
-          )}
         </nav>
         <div className="side-bottom">
-          <div className="route-note">
-            <i>
-              <Route size={18} />
-            </i>
-            <div>
-              <strong>Ruta 08</strong>
-              <small>Región Metropolitana</small>
-            </div>
-          </div>
-          <button
-            className="profile"
-            onClick={() => {
-              K(true);
-              M(false);
-            }}
-          >
-            <span className="avatar">
-              {who
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
-            </span>
+          {nav("Configuración", Settings)}
+          <button className="profile" onClick={() => K(true)}>
+            <span className="avatar">{admin ? "PF" : "CM"}</span>
             <span>
               <strong>{who}</strong>
               <small>{role}</small>
             </span>
-            <ChevronsUpDown size={15} />
+            <ChevronsUpDown size={16} />
           </button>
         </div>
       </aside>
@@ -341,229 +424,404 @@ function App({ ingreso }: { ingreso: boolean }) {
         <header className="topbar">
           <button
             className="iconbtn menu-btn"
-            onClick={() => M(true)}
             aria-label="Abrir menú"
+            onClick={() => M(true)}
           >
-            <Menu />
+            <Menu size={20} />
           </button>
           <div className="crumb">
-            <PanelLeft size={16} />
+            <House size={15} />
             <span>Mi espacio</span>
             <ChevronRight size={13} />
-            <b>{page === "Focos rojos" ? "Mi cartera" : page === 'Inicio del día' ? homeLabel : page}</b>
+            <b>{page}</b>
           </div>
           <div className="top-actions">
+            <span className="online-badge">
+              {online ? "En línea" : "Sin conexión"}
+            </span>
+            <span className="divider" />
             <button
-              className={"sync " + (off ? "off" : "")}
-              onClick={() => P(pop === "sync" ? "" : "sync")}
+              className="iconbtn bell"
+              aria-label={"Avisos internos: " + unread + " sin leer"}
+              onClick={() => go("Avisos internos")}
             >
-              {off ? <CloudOff size={15} /> : <CloudCheck size={15} />}{" "}
-              {off
-                ? "Sin conexión"
-                : count
-                  ? "Por sincronizar"
-                  : "Sincronizado"}
+              <Bell size={19} />
+              {!!unread && <b className="counter">{unread}</b>}
             </button>
             <span className="divider" />
             <button
-              className="bell iconbtn"
-              aria-label="Ver alertas"
-              onClick={() => P(pop === "alerts" ? "" : "alerts")}
+              className="top-role"
+              onClick={() => K(true)}
+              aria-label="Cambiar perfil"
             >
-              <Bell size={19} />
-              <i />
+              <BriefcaseBusiness size={16} />
+              <span>{role}</span>
+              <ChevronDown size={13} />
             </button>
           </div>
-          {pop && (
-            <>
-              <button
-                className="dismiss"
-                onClick={() => P("")}
-                aria-label="Cerrar panel"
-              />
-              <div className="popover">
-                <h3>
-                  {pop === "sync"
-                    ? "Estado de sincronización"
-                    : "Alertas de la jornada"}
-                </h3>
-                {pop === "sync" ? (
-                  <>
-                    <p>
-                      {off
-                        ? "Modo sin conexión activo."
-                        : "Conexión disponible."}{" "}
-                      {count} visitas en cola.
-                    </p>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={offline}
-                        onChange={(e) => O(e.target.checked)}
-                      />{" "}
-                      Simular sin conexión
-                    </label>
-                    {queue.length>0&&<><label>Respuesta de prueba<select value={scenario} disabled={syncing} onChange={e=>setScenario(e.target.value)}><option>Normal</option><option>Error de conexión</option><option>Conflicto de modalidad</option></select></label>{queue.map(v=><div key={v.id}><strong>{v.store} · {v.date}</strong><small>{v.syncState||'Pendiente'}</small>{v.syncState==='Conflicto'&&<><p>Selecciona la modalidad correcta. Se conservarán ambas versiones.</p><button className="secondary" disabled={off} onClick={()=>resolve(v,false)}>Dispositivo: {v.mode}</button><button className="secondary" disabled={off} onClick={()=>resolve(v,true)}>Servidor de prueba: {v.mode==='Presencial'?'Online':'Presencial'}</button></>}</div>)}<button className="primary" disabled={off||syncing||queue.every(v=>v.syncState==='Conflicto')} onClick={sync}>{syncing?'Sincronizando…':'Sincronizar maqueta'}</button></>}
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => go("Focos rojos")}>
-                      Revisar farmacias en foco rojo <ChevronRight size={15} />
-                    </button>
-                    <button onClick={() => go("Mis pendientes")}>
-                      {late} seguimientos vencidos <ChevronRight size={15} />
-                    </button>
-                  </>
-                )}
-              </div>
-            </>
-          )}
         </header>
         <div className="content">
-          {page === 'Inicio del día' && role !== roles[0] ? <ManagementHome role={role} rows={rows} go={go} manage={manage} late={late}/> : page === "Inicio del día" ? (
+          {!online && (
+            <p role="status" className="offline-note">
+              Sin conexión. Lo que escribas queda en pantalla, pero no se guarda
+              hasta que vuelva la señal.
+            </p>
+          )}
+          {page === home && !admin ? (
             <Dashboard
               first={who.split(" ")[0]}
+              visits={myVisits}
+              tasks={myTasks}
+              plan={plan.rows}
+              open={open}
               go={go}
-              open={open}
-              visit={newVisit}
-              visits={allVisits}
-              tasks={tasks}
-              plan={plan}
+              visit={() => go("Registrar gestión")}
             />
-          ) : page === "Registrar visita" ? (
-            <VisitForm owner={role === roles[0] ? who : undefined}
-              initial={id}
-              save={save}
+          ) : (page === home && admin) ||
+            admins.some(([s]) => s === page) ||
+            page === "Viajes" ? (
+            canOperate ? (
+              <Operations
+                key={page}
+                page={page === home ? "Revisión del equipo" : page}
+                who={who}
+                admin={admin}
+                visits={visits}
+                tasks={tasks}
+                plans={plans}
+                consider={(n, t) => announce(t, n, "plan")}
+                announce={announce}
+              />
+            ) : (
+              <p>Esta sección no está disponible para tu perfil.</p>
+            )
+          ) : [
+              "Registrar gestión",
+              "Corregir visita",
+              "Agregar gestión",
+            ].includes(page) &&
+            (page === "Registrar gestión" ||
+              (current &&
+                !current.annulled &&
+                (admin || current.author === who))) ? (
+            <VisitForm
+              key={page + route.id + who}
+              initial={store?.id ?? ""}
               author={who}
-              cancel={() => open(id)}
-            />
-          ) : ["Mi cartera", "Focos rojos"].includes(page) ? (
-            <Portfolio owner={role === roles[0] ? who : undefined}
-              key={page}
-              visits={allVisits}
+              original={page === "Registrar gestión" ? undefined : current}
+              append={page === "Agregar gestión"}
+              visits={visits}
               tasks={tasks}
+              offline={!online}
+              save={save}
+              cancel={() =>
+                current ? view(current.id) : store ? open(store.id) : go(home)
+              }
+            />
+          ) : page === "Detalle de visita" && current ? (
+            <VisitDetail
+              key={current.id}
+              v={current}
+              author={who}
+              admin={admin}
+              edit={(append) =>
+                go(append ? "Agregar gestión" : "Corregir visita", current.id)
+              }
+              save={save}
+            />
+          ) : page === "Ficha de farmacia" && store ? (
+            <Detail
+              s={store}
+              tasks={tasks}
+              visits={visits}
+              visit={() => go("Registrar gestión", store.id)}
+              view={view}
+            />
+          ) : ["Farmacias", "Focos rojos"].includes(page) ? (
+            <Portfolio
+              key={page}
+              owner={admin ? undefined : who}
               red={page === "Focos rojos"}
+              visits={visits}
+              tasks={tasks}
               open={open}
             />
-          ) : page === "Ficha de farmacia" ? (
-            <Detail
-              s={stores.find((s) => s.id === id)!}
-              visits={allVisits}
-              tasks={tasks}
-              visit={newVisit}
-            />
-          ) : page === "Mis pendientes" ? (
+          ) : page === "Pendientes" ? (
             <Tasks
-              tasks={tasks.filter(t=>role==='Administrador'||settings.owner(t.store)===who)}
-              close={(id,closure) =>
-                T(
-                  tasks.map((t) =>
+              tasks={myTasks}
+              open={open}
+              close={(id, closure) =>
+                V({
+                  ...records,
+                  tasks: tasks.map((t) =>
                     t.id === id ? { ...t, closed: !t.closed, closure } : t,
                   ),
-                )
+                })
               }
-              open={open}
             />
           ) : page === "Plan del mes" ? (
-            <>{role !== roles[0] && <section className="panel form-panel"><label>Plan de la nutricionista<select value={planner} onChange={e=>selectPlanner(e.target.value)}>{team.map(name=><option key={name}>{name}</option>)}</select></label></section>}
-            <Planning key={planner} planner={planner}
-              plan={plan}
-              setPlan={L}
-              published={published}
-              publish={H}
-              notices={notices.filter((n) => n.to === "Todas" || n.to === planner)}
-              visits={allVisits}
-              tasks={tasks}
-              open={open}
-              notify={notify}
-            /></>
-          ) : page === 'Inventario G8' ? <Inventory/> : page === 'Encuesta de satisfacción' ? <Satisfaction who={who} management={role==='Administrador'}/> : page !== "Administración" ? (
-            <Resources
-              key={page}
-              page={page}
-              visits={allVisits}
-              open={open}
-              sessions={sessions}
-              setSessions={U}
-              who={who} management={role !== roles[0]}
-              edit={settings.permission(who, "escuela")}
-            />
-          ) : null}
-          <div hidden={page !== "Administración" || role === "Nutricionista"}>
-            <Admin tab={adminTab} T={setAdminTab} rows={rows}
-              role={role}
-              plan={Object.values(plans).flatMap(p=>p.rows)}
-              published={published}
-              notices={notices}
-              setNotices={B}
-              notify={notify}
-              permission={permission}
-              permit={Q}
-            />
-          </div>
+            <>
+              {admin && (
+                <label>
+                  Nutricionista
+                  <select value={planner} onChange={(e) => Y(e.target.value)}>
+                    {team.map((n) => (
+                      <option key={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <Planning
+                planner={person}
+                plan={plan.rows}
+                setPlan={(rows) =>
+                  P((p) => ({ ...p, [person]: { ...p[person], rows } }))
+                }
+                published={plan.published}
+                publish={(published) =>
+                  P((p) => ({ ...p, [person]: { ...p[person], published } }))
+                }
+                visits={visits}
+                tasks={tasks}
+                notices={notes.filter(
+                  (n) =>
+                    n.hotel === "plan" && (n.to === "Todas" || n.to === person),
+                )}
+                open={open}
+                notify={notify}
+              />
+            </>
+          ) : page === "Nuevos ingresos" ? (
+            <Training who={who} admin={admin} announce={announce} />
+          ) : ["Encuestas", "Concursos", "Campañas"].includes(page) ? (
+            <Commercial key={page} page={page} who={who} admin={admin} />
+          ) : page === "Simi Escuela" ? (
+            <>
+              <Resources
+                who={who}
+                management={admin}
+                visits={visits}
+                page={page}
+                open={open}
+                sessions={sessions}
+                setSessions={U}
+                edit={ctx.permission(who, "Habilitar Simi Escuela")}
+              />
+              <p className="note-box">
+                Sin asistencia registrada: {stores[1].name}. Dato informativo,
+                no genera una alerta.
+              </p>
+            </>
+          ) : page === "Mi desempeño" ? (
+            <>
+              <Intro
+                title={page}
+                desc="Resultados de tu trabajo durante el mes actual."
+              />
+              <section className="panel form-panel">
+                <h2>Indicadores del mes</h2>
+                <Table
+                  headers={["Indicador", "Resultado"]}
+                  rows={[
+                    ["Cobertura de cartera", performance.coverage + " %"],
+                    ["Gestiones del mes", performance.count],
+                    ["Personas capacitadas", performance.people],
+                  ]}
+                />
+                <h3>Visitas registradas</h3>
+                {myVisits.map((v) => (
+                  <button
+                    key={v.id}
+                    className="simple-row"
+                    onClick={() => view(v.id)}
+                  >
+                    <div>
+                      <strong>
+                        {v.store} · {dateText(v.date)}
+                      </strong>
+                      <small>
+                        {v.attempt
+                          ? "Intento"
+                          : v.actions.map((a) => a.type).join(", ")}{" "}
+                        · {v.annulled ? "Anulada" : "Vigente"}
+                      </small>
+                    </div>
+                    <ChevronRight size={16} />
+                  </button>
+                ))}
+              </section>
+            </>
+          ) : page === "Avisos internos" ? (
+            <>
+              <Intro
+                title={page}
+                desc="Nuevos ingresos, aprobaciones y actividades que requieren atención."
+              />
+              <section className="panel form-panel">
+                <button
+                  className="secondary"
+                  disabled={!unread}
+                  onClick={() => Z(feed.map((n) => n.title))}
+                >
+                  Marcar todos como leídos
+                </button>
+                {feed.map((n, i) => (
+                  <button
+                    className="simple-row"
+                    key={i}
+                    onClick={() => {
+                      Z([...seen, n.title]);
+                      if (n.hotel === "regularizar") Y(n.to);
+                      go(
+                        n.hotel === "plan" || n.hotel === "regularizar"
+                          ? "Plan del mes"
+                          : n.title.includes("viaje")
+                            ? "Viajes"
+                            : "Nuevos ingresos",
+                      );
+                    }}
+                  >
+                    <Bell size={17} />
+                    <div>
+                      <strong>{n.title}</strong>
+                      <small>
+                        {dateText(n.date)} ·{" "}
+                        {seen.includes(n.title) ? "Leído" : "Nuevo"}
+                      </small>
+                    </div>
+                    <ChevronRight size={15} />
+                  </button>
+                ))}
+              </section>
+            </>
+          ) : page === "Configuración" ? (
+            <>
+              <Intro
+                title={page}
+                desc="Personaliza tu espacio de trabajo y administra tu perfil de demostración."
+              />
+              <section className="panel form-panel">
+                <label>
+                  Apariencia
+                  <select
+                    value={dark ? "Oscura" : "Clara"}
+                    onChange={(e) => D(e.target.value === "Oscura")}
+                  >
+                    <option>Clara</option>
+                    <option>Oscura</option>
+                  </select>
+                </label>
+                <button className="simple-row" onClick={() => go("Viajes")}>
+                  <Plane size={18} />
+                  Solicitudes de viaje
+                  <ChevronRight size={16} />
+                </button>
+                <button
+                  className="simple-row"
+                  onClick={async () => {
+                    if (!install) return H(!help);
+                    await install.prompt();
+                    I(null);
+                  }}
+                >
+                  <Download size={18} />
+                  Instalar Praxia
+                </button>
+                {help && (
+                  <p className="install-guide">
+                    Abre Praxia en su propia pestaña. En el menú de tu navegador
+                    elige «Instalar aplicación» o «Agregar a inicio». En Safari,
+                    usa Compartir y «Agregar a inicio».
+                  </p>
+                )}
+                <button className="simple-row" onClick={() => K(true)}>
+                  <Users size={18} />
+                  Cambiar perfil
+                </button>
+                <button
+                  className="simple-row"
+                  onClick={() => {
+                    R("");
+                    K(true);
+                    go(home);
+                  }}
+                >
+                  <LogOut size={18} />
+                  Cerrar sesión
+                </button>
+              </section>
+            </>
+          ) : (
+            <section className="panel form-panel">
+              <h2>No se encontró la sección</h2>
+              <button className="secondary" onClick={() => go(home)}>
+                Volver al inicio
+              </button>
+            </section>
+          )}
           <footer>
-            <span className="footer-mark">Praxia</span> Entrenamiento comercial{" "}
-            <i /> Espacio de trabajo
+            <span className="footer-mark">Praxia</span>
+            <i />
+            Nutrición y Entrenamiento Comercial
           </footer>
         </div>
       </main>
       {picker && (
-        <div className="overlay">
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="access"
-            className="dialog"
-          >
-            <div className="heading-line">
-              <div className="eyebrow">Acceso de demostración</div>
-              <button
-                className="iconbtn"
-                aria-label="Cerrar"
-                onClick={() => K(false)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <h2 id="access">Ingresar a Praxia</h2>
-            <p>
-              Selecciona un perfil ficticio para recorrer su espacio de trabajo.
-            </p>
-            {roles.map((r, i) => (
-              <button
-                key={r}
-                className="simple-row"
-                onClick={() => {
-                  R(r);
-                  K(false);
-                  setAdminTab('Equipo');
-                  go('Inicio del día');
-                }}
-              >
-                <span className="avatar">
-                  {names[i]
-                    .split(" ")
-                    .map((s) => s[0])
-                    .join("")}
-                </span>
-                <div>
-                  <strong>{names[i]}</strong>
-                  <small>{r}</small>
-                </div>
-                <ArrowRight size={16} />
-              </button>
-            ))}
-          </section>
-        </div>
-      )}
-      {toast && (
+        <RolePicker choose={choose} close={role ? () => K(false) : undefined} />
+      )}{" "}
+      {message && (
         <div className="toast" role="status">
-          {toast}
-          <button onClick={() => A("")} aria-label="Cerrar aviso">
-            <X size={14} />
-          </button>
+          <Check size={16} />
+          {message}
         </div>
       )}
     </div>
+  );
+}
+function RolePicker({
+  choose,
+  close,
+}: {
+  choose: (s: string) => void;
+  close?: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      className="role-dialog"
+      ref={ref}
+      onCancel={(e) => {
+        e.preventDefault();
+        close?.();
+      }}
+    >
+      <div className="heading-line">
+        <div className="eyebrow">Acceso de demostración</div>
+        {close && (
+          <button className="iconbtn" aria-label="Cerrar" onClick={close}>
+            <X size={18} />
+          </button>
+        )}
+      </div>
+      <h2>Elige tu perfil</h2>
+      <p>Recorre Praxia con datos ficticios guardados en este navegador.</p>
+      {["Nutricionista", "Administradora"].map((r, i) => (
+        <button className="simple-row" key={r} onClick={() => choose(r)}>
+          <span className="avatar">{i ? "PF" : "CM"}</span>
+          <div>
+            <strong>{r}</strong>
+            <small>
+              {i
+                ? "Paula Fuentes · Gestión del equipo"
+                : "Camila Morales · Trabajo en terreno"}
+            </small>
+          </div>
+          <ChevronRight size={16} />
+        </button>
+      ))}
+    </dialog>
   );
 }

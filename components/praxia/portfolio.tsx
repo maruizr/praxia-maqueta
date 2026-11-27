@@ -19,29 +19,47 @@ import {
   today,
 } from "./data";
 export function Portfolio({
-  owner, red,
+  owner,
+  red,
   visits,
   tasks,
   open,
 }: {
-  owner?:string;
+  owner?: string;
   red: boolean;
   visits: Visit[];
   tasks: Task[];
   open: (s: string) => void;
 }) {
   const [q, Q] = useState(""),
-    [p, P] = useState(red ? "P1" : ""),
+    [p, P] = useState(""),
     [zone, Z] = useState(""),
     [sup, S] = useState(""),
     [reg, R] = useState("");
   const settings = useSettings();
   const list = stores
-    .filter((s) => !owner || settings.owner(s.id) === owner)
-    .map((s) => ({ ...s, school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq }))
+    .filter(
+      (s) =>
+        !owner ||
+        settings.owner(s.id) === owner ||
+        settings.covers.some(
+          (c) =>
+            c.temporary &&
+            c.store === s.id &&
+            c.who === owner &&
+            c.start <= today &&
+            c.end >= today,
+        ),
+    )
+    .map((s) => ({
+      ...s,
+      school: settings.school(s.id),
+      freq: settings.frequency[s.id] || s.freq,
+    }))
     .filter(
       (s) =>
         (s.name + " " + s.id).toLowerCase().includes(q.toLowerCase()) &&
+        (!red || settings.flags[s.id] || status(s, visits, tasks).p === 1) &&
         (!p || p === "P" + status(s, visits, tasks).p) &&
         (!zone || s.zone === zone) &&
         (!sup || sup === s.supervisor) &&
@@ -51,7 +69,7 @@ export function Portfolio({
     <>
       <div className="page-intro">
         <div className="eyebrow">Trabajo en terreno</div>
-        <h1>{owner ? 'Mi cartera' : 'Cartera del equipo'}</h1>
+        <h1>{red ? "Focos rojos" : "Farmacias"}</h1>
         <p>Consulta tus farmacias y prioriza tu próxima visita.</p>
       </div>
       <section className="panel form-panel">
@@ -69,7 +87,7 @@ export function Portfolio({
             ["Prioridad", p, P, ["P1", "P2", "P3", "P4"]],
             ["Zona", zone, Z, ["Oriente", "Centro", "Sur"]],
             ["Supervisor", sup, S, ["Daniela Rojas", "Luis Tapia"]],
-            ["Región", reg, R, ["Metropolitana"]],
+            ["Región", reg, R, [...new Set(stores.map((s) => s.region))]],
           ].map(([name, v, set, values]: any) => (
             <select
               key={name}
@@ -84,7 +102,9 @@ export function Portfolio({
             </select>
           ))}
         </div>
-        <small>{list.length} farmacias · {owner || 'Todo el equipo'}</small>
+        <small>
+          {list.length} farmacias · {owner || "Todo el equipo"}
+        </small>
         {list.map((s) => (
           <button key={s.id} className="simple-row" onClick={() => open(s.id)}>
             <i className="activity-icon">
@@ -102,7 +122,14 @@ export function Portfolio({
               }
             >
               P{status(s, visits, tasks).p}{" "}
-              {status(s, visits, tasks).p === 1 ? "· Foco rojo" : ""}
+              {
+                ["", "Crítica", "Alta", "Media", "Mantención"][
+                  status(s, visits, tasks).p
+                ]
+              }
+              {status(s, visits, tasks).p === 1 || settings.flags[s.id]
+                ? "· Foco rojo"
+                : ""}
             </span>
             <ChevronRight size={16} />
           </button>
@@ -121,15 +148,21 @@ export function Detail({
   visits,
   tasks,
   visit,
+  view,
 }: {
+  view?: (id: string) => void;
   s: Store;
   visits: Visit[];
   tasks: Task[];
   visit: () => void;
 }) {
   const settings = useSettings();
-  const employees=settings.roster;
-  s = { ...s, school:settings.school(s.id), freq: settings.frequency[s.id] || s.freq };
+  const employees = settings.allStaff;
+  s = {
+    ...s,
+    school: settings.school(s.id),
+    freq: settings.frequency[s.id] || s.freq,
+  };
   const st = status(s, visits, tasks),
     [tab, T] = useState("Resumen");
   const own = visits.filter((v) => v.store === s.id);
@@ -137,13 +170,13 @@ export function Detail({
     <>
       <div className="page-intro">
         <div className="eyebrow">
-          {s.id} · {s.id.startsWith("CL") ? "Corporativa" : "Franquicia"}
+          {s.id} · {s.id.startsWith("CL") ? "Propia" : "Franquicia"}
         </div>
         <div className="heading-line">
           <h1>{s.name}</h1>
           <button className="primary" onClick={visit}>
             <Plus size={16} />
-            Registrar visita
+            Registrar gestión
           </button>
         </div>
         <p>
@@ -165,7 +198,8 @@ export function Detail({
         {tab === "Resumen" ? (
           <>
             <span className={"pill " + (st.p === 1 ? "red" : "green")}>
-              Prioridad P{st.p} ·{" "}
+              Prioridad P{st.p}{" "}
+              {["", "Crítica", "Alta", "Media", "Mantención"][st.p]} ·
               {st.p === 1
                 ? "Foco rojo"
                 : st.p === 2
@@ -174,10 +208,38 @@ export function Detail({
                     ? "Seguimiento programado"
                     : "Al día"}
             </span>
+            {(settings.flags[s.id] || st.p === 1) && (
+              <p className="note-box">
+                Foco rojo ·{" "}
+                {settings.flags[s.id] || "Tiempo sin visita o capacitación"}
+              </p>
+            )}
+            <details>
+              <summary>Registrar alerta manual</summary>
+              <form
+                className="form-stack"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const reason = String(
+                    new FormData(e.currentTarget).get("reason"),
+                  ).trim();
+                  if (reason) {
+                    settings.flagStore(s.id, reason);
+                    e.currentTarget.reset();
+                  }
+                }}
+              >
+                <label>
+                  Motivo de la alerta
+                  <input name="reason" required />
+                </label>
+                <button className="secondary">Guardar alerta</button>
+              </form>
+            </details>
             <dl className="facts">
               {Object.entries({
                 Zona: s.zone,
-                'Última asistencia a Simi Escuela': dateText(s.school),
+                "Última asistencia a Simi Escuela": dateText(s.school),
                 Región: s.region,
                 Supervisor: s.supervisor,
                 "Jefe comercial": s.boss,
@@ -197,13 +259,33 @@ export function Detail({
         ) : tab === "Equipo" ? (
           <>
             <h3>Dotación · {employees(s.id).length} colaboradores</h3>
-            <p>{employees(s.id).filter((p,i)=>i<2 || own.some(v=>v.actions.some(a=>a.persons.some(x=>x.id===p.id && x.result==='Capacitado')))).length} con capacitación registrada</p>
+            <p>
+              {
+                employees(s.id).filter(
+                  (p, i) =>
+                    i < 2 ||
+                    own.some((v) =>
+                      v.actions.some((a) =>
+                        a.persons.some(
+                          (x) => x.id === p.id && x.result === "Capacitado",
+                        ),
+                      ),
+                    ),
+                ).length
+              }{" "}
+              con capacitación registrada
+            </p>
             {employees(s.id).map((p, i) => (
               <div className="simple-row" key={p.id}>
                 <div>
                   <strong>{p.name}</strong>
                   <small>
-                    {p.job} · {p.id}
+                    {p.job} · {p.id} ·{" "}
+                    {p.inactive
+                      ? "Inactivo desde " + p.inactive
+                      : p.provisional
+                        ? "Provisorio"
+                        : "Activo"}
                   </small>
                 </div>
                 <span className="pill green">
@@ -239,10 +321,32 @@ export function Detail({
             {own.map((v) => (
               <details open key={v.id}>
                 <summary>
-                  {dateText(v.date)} · {v.mode}{v.mode==='Otros'&&v.other?' ('+v.other+')':''} · {v.author} · {v.id.startsWith('historico-')?'Histórico migrado':'Praxia'} · {v.syncState||(v.queued?'Pendiente de sincronizar':'Sincronizado')}
+                  {dateText(v.date)} · {v.mode}
+                  {v.mode === "Otros" && v.other
+                    ? " (" + v.other + ")"
+                    : ""} · {v.author} ·{" "}
+                  {v.id.startsWith("historico-")
+                    ? "Histórico migrado"
+                    : "Praxia"}{" "}
+                  ·{" "}
+                  {v.syncState ||
+                    (v.queued ? "Pendiente de sincronizar" : "Sincronizado")}
                 </summary>
-                {v.resolution&&<p>Conflicto resuelto: dispositivo ({v.resolution.device}), servidor de prueba ({v.resolution.remote}). Se eligió: {v.resolution.choice}.</p>}
-                {v.attempt&&<p>Intento sin atención: {v.attempt}</p>}{v.contingency&&<p>Registro de contingencia</p>}{v.planned!==undefined&&<small>{v.planned?'Planificada':'No planificada'}</small>}
+                <button className="text-btn" onClick={() => view?.(v.id)}>
+                  Ver detalle de visita · {v.annulled ? "Anulada" : "Vigente"}
+                </button>
+                {v.resolution && (
+                  <p>
+                    Conflicto resuelto: dispositivo ({v.resolution.device}),
+                    servidor de prueba ({v.resolution.remote}). Se eligió:{" "}
+                    {v.resolution.choice}.
+                  </p>
+                )}
+                {v.attempt && <p>Intento sin atención: {v.attempt}</p>}
+                {v.contingency && <p>Registro de contingencia</p>}
+                {v.planned !== undefined && (
+                  <small>{v.planned ? "Planificada" : "No planificada"}</small>
+                )}
                 {v.actions.map((a, i) => (
                   <div className="person" key={i}>
                     <h3>
@@ -250,7 +354,17 @@ export function Detail({
                     </h3>
                     {a.persons.map((p) => (
                       <p key={p.id}>
-                        {p.name} · {p.topics.join(", ")} · {p.result}{['Requiere seguimiento','Reservada para una fecha'].includes(p.result)&&p.due?' · '+dateText(p.due):''}{p.result==='Requiere seguimiento'?' · '+p.kind:''} {p.note}
+                        {p.name} · {p.topics.join(", ")} · {p.result}
+                        {[
+                          "Requiere seguimiento",
+                          "Reservada para una fecha",
+                        ].includes(p.result) && p.due
+                          ? " · " + dateText(p.due)
+                          : ""}
+                        {p.result === "Requiere seguimiento"
+                          ? " · " + p.kind
+                          : ""}{" "}
+                        {p.note}
                       </p>
                     ))}
                     <small>{a.note}</small>
@@ -294,30 +408,42 @@ export function Tasks({
   open,
 }: {
   tasks: Task[];
-  close: (s: string,closure?:Task['closure']) => void;
+  close: (s: string, closure?: Task["closure"]) => void;
   open: (s: string) => void;
 }) {
   const [tab, T] = useState("Vencidos"),
+    weekEnd = new Date(new Date(today + "T12:00").getTime() + 7 * 86400000)
+      .toISOString()
+      .slice(0, 10),
     list = tasks.filter((t) =>
-      tab === "Cerrados"
-        ? t.closed
-        : !t.closed &&
-          (tab === "Vencidos"
-            ? t.date < today
-            : tab === "Esta semana"
-              ? t.date >= today && t.date <= "2026-11-29"
-              : t.date > "2026-11-29"),
+      tab === "Cancelados"
+        ? t.cancelled
+        : !t.cancelled &&
+          (tab === "Completados"
+            ? t.closed
+            : !t.closed &&
+              (tab === "Vencidos"
+                ? t.date < today
+                : tab === "Próximos 7 días"
+                  ? t.date >= today && t.date <= weekEnd
+                  : t.date > weekEnd)),
     );
   return (
     <>
       <div className="page-intro">
         <div className="eyebrow">Seguimiento individual</div>
-        <h1>Mis pendientes</h1>
+        <h1>Pendientes</h1>
         <p>Revisa los compromisos de cada colaborador.</p>
       </div>
       <div className="panel form-panel">
         <div className="tabs">
-          {["Vencidos", "Esta semana", "Próximos", "Cerrados"].map((x) => (
+          {[
+            "Vencidos",
+            "Próximos 7 días",
+            "Más adelante",
+            "Completados",
+            "Cancelados",
+          ].map((x) => (
             <button
               key={x}
               className={x === tab ? "selected" : ""}
@@ -338,7 +464,39 @@ export function Tasks({
                 {stores.find((s) => s.id === t.store)?.name}
               </button>
             </div>
-            {t.closed?<div>{t.closure&&<p>{t.closure.action} · {t.closure.result}</p>}<button className="secondary" onClick={()=>close(t.id)}>Reabrir</button></div>:<details><summary>Resolver pendiente</summary><form onSubmit={e=>{e.preventDefault();const data=new FormData(e.currentTarget),action=String(data.get('action')).trim(),result=String(data.get('result')).trim();if(action&&result)close(t.id,{action,result})}}><label>Acción realizada<input name="action" required pattern={'.*\\S.*'}/></label><label>Resultado obtenido<input name="result" required pattern={'.*\\S.*'}/></label><button className="primary">Confirmar cierre</button></form></details>}
+            {t.cancelled ? (
+              <small>Cancelado por corrección</small>
+            ) : t.closed ? (
+              <div>
+                {t.closure && (
+                  <p>
+                    {t.closure.action} · {t.closure.result}
+                  </p>
+                )}
+                <button className="secondary" onClick={() => close(t.id)}>
+                  Reabrir
+                </button>
+              </div>
+            ) : (
+              <details>
+                <summary>Completar pendiente</summary>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const result = String(
+                      new FormData(e.currentTarget).get("comment"),
+                    ).trim();
+                    if (result) close(t.id, { action: "Completado", result });
+                  }}
+                >
+                  <label>
+                    Comentario de cierre
+                    <input name="comment" required pattern={".*\\S.*"} />
+                  </label>
+                  <button className="primary">Confirmar cierre</button>
+                </form>
+              </details>
+            )}
           </div>
         ))}
         {!list.length && (

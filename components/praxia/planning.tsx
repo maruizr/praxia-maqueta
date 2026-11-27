@@ -1,36 +1,29 @@
 "use client";
 import { useState } from "react";
+import { Plus, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import {
-  Plus,
-  CalendarDays,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
-import {
-  activities, team,
-  status,
   today,
   stores,
   dateText,
-  type Row,
   type Visit,
   type Task,
+  type Row,
 } from "./data";
-import {useSettings} from './settings';
+import { useSettings } from "./settings";
+import { dateISO, useLocal } from "./local";
 export type Notice = { date: string; title: string; to: string; hotel: string };
 export default function Planning({
-  plan, planner,
+  plan,
+  planner,
   setPlan,
   published,
   publish,
   visits,
-  tasks,
   notices,
   open,
   notify,
 }: {
-  planner:string;
+  planner: string;
   plan: Row[];
   setPlan: (r: Row[]) => void;
   published: boolean;
@@ -41,355 +34,240 @@ export default function Planning({
   open: (id: string) => void;
   notify: (s: string) => void;
 }) {
-  const settings=useSettings();
-  const cartera = stores.filter(s=>settings.owner(s.id)===planner);
-  const rejected = Object.entries(settings.rejected).filter(([id])=>settings.owner(id)===planner);
-  const firstStore = cartera[0]?.id ?? '';
-  const [week, W] = useState(false),
-    [start, B] = useState(23),
-    [tab, T] = useState("Actividades"),
-    [add, A] = useState(false),
-    [date, D] = useState(today),
-    [store, S] = useState(firstStore),
-    [mode, M] = useState("Presencial"),
-    [type, Y] = useState(activities[0]),
-
-    [reason, R] = useState("");
-  const rows = plan.filter(
-    (r) =>
-      !week || (+r.date.slice(-2) >= start && +r.date.slice(-2) < start + 7),
+  const ctx = useSettings(),
+    [week, W] = useState(false),
+    [selected, S] = useState(today),
+    [form, F] = useState(false);
+  const [states, setStates] = useLocal<Record<string, boolean>>(
+    "publicacion:" + planner,
+    {},
   );
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [confirmRemoval, setConfirmRemoval] = useState(false);
-  function removeActivity() {
-    if (!editing || !confirmRemoval) return;
-    const matches = (r: { store: string; date: string }) => r.store === editing.store && r.date === editing.date;
-    if (visits.some(matches)) return notify("Esta visita ya está registrada y no se puede retirar.");
-    setPlan(plan.filter((r) => !matches(r)));
-    publish(false);
-    setConfirmRemoval(false);
-    setEditing(null);
-    A(false);
-    notify("Actividad retirada del plan.");
-    requestAnimationFrame(() => document.getElementById("add-plan-activity")?.focus());
+  const month = selected.slice(0, 7),
+    isPublished = states[month] ?? (month === today.slice(0, 7) && published);
+  const setPublished = (value: boolean) => {
+    setStates({ ...states, [month]: value });
+    if (month === today.slice(0, 7)) publish(value);
+  };
+  const d = new Date(selected + "T12:00:00"),
+    first = new Date(d.getFullYear(), d.getMonth(), 1),
+    start = new Date(week ? d : first);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  const dates = Array.from(
+      {
+        length: week
+          ? 7
+          : Math.ceil(
+              (((first.getDay() + 6) % 7) +
+                new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()) /
+                7,
+            ) * 7,
+      },
+      (_, i) => {
+        const x = new Date(start);
+        x.setDate(x.getDate() + i);
+        return dateISO(x);
+      },
+    ),
+    owned = stores.filter((s) => ctx.owner(s.id) === planner);
+  function shift(n: number) {
+    const dt = new Date(d);
+    if (week) dt.setDate(dt.getDate() + 7 * n);
+    else {
+      dt.setDate(1);
+      dt.setMonth(dt.getMonth() + n);
+    }
+    S(dateISO(dt));
   }
-  function showForm(row: Row | null, suggestedStore = firstStore) {
-    setConfirmRemoval(false);
-    setEditing(row);
-    D(row?.date ?? (suggestedStore === firstStore ? today : "2026-11-30"));
-    S(row?.store ?? suggestedStore);
-    M(row?.mode ?? "Presencial");
-    Y(row?.type ?? activities[0]);
-    T("Actividades");
-    A(true);
-    requestAnimationFrame(() => document.getElementById("plan-date")?.focus());
-  }
-  function save() {
-    if (!store || (!cartera.some(s=>s.id===store) && editing?.store !== store)) return notify('Selecciona una farmacia de esta cartera.');
-    if (!date.startsWith("2026-11"))
-      return notify("Selecciona una fecha de noviembre.");
-    const remaining = plan.filter((r) => !editing || r.store !== editing.store || r.date !== editing.date);
-    if (remaining.some((r) => r.store === store && r.date === date))
-      return notify("Esta farmacia ya está planificada para esa fecha.");
-    setPlan(
-      [...remaining, { store, date, mode, type }].sort((a, b) =>
-        a.date.localeCompare(b.date),
-      ),
+  const done = (r: Row) =>
+    visits.some(
+      (v) =>
+        !v.annulled && !v.attempt && v.store === r.store && v.date === r.date,
     );
-    publish(false);
-    A(false);
-    notify(editing ? "Actividad actualizada en el borrador." : "Actividad agregada al borrador.");
-    setEditing(null);
-  }
+  const monthRows = plan.filter((r) => r.date.startsWith(selected.slice(0, 7)));
   return (
-    <>
+    <div className="form-stack">
       <div className="page-intro">
-        <div className="eyebrow">Ruta {String(8+team.indexOf(planner)).padStart(2,'0')} · {planner}</div>
-        <div className="heading-line">
-          <h1>Plan del mes</h1>
-          <span className="pill green">
-            {published ? "Publicado" : "Borrador"}
-          </span>
-        </div>
-        <p>Noviembre 2026 · Campaña Impulso G8</p>
+        <div className="eyebrow">Planificación · {planner}</div>
+        <h1>Plan del mes</h1>
+        <p>Organiza tus visitas y revisa las actividades por regularizar.</p>
       </div>
       <section className="panel form-panel">
         <div className="heading-line">
           <h2>
-            <CalendarDays size={20} /> Noviembre 2026
+            <CalendarDays size={20} />
+            {d.toLocaleDateString("es-CL", { month: "long", year: "numeric" })}
           </h2>
-          <button id="add-plan-activity" className="primary" onClick={() => showForm(null)}>
-            <Plus size={15} /> Actividad
-          </button>
+          <span className="pill green">
+            {isPublished ? "Publicado" : "Borrador"}
+          </span>
         </div>
-        <p>
-          {
-            new Set(
-              plan.filter((r) => r.mode === "Presencial").map((r) => r.store),
-            ).size
-          }{" "}
-          farmacias presenciales ·{" "}
-          {
-            new Set(plan.filter((r) => r.mode === "Online").map((r) => r.store))
-              .size
-          }{" "}
-          online
-        </p>
-        {add && confirmRemoval && editing ? (
-          <section className="person form-stack" aria-labelledby="remove-title">
-            <h3 id="remove-title">¿Retirar esta actividad del plan?</h3>
-            <p><strong>{stores.find((s) => s.id === editing.store)?.name} · {dateText(editing.date)}</strong><br />{editing.type} · {editing.mode}</p>
-            <p>La actividad dejará de aparecer en la agenda y el plan quedará como borrador.</p>
-            <div className="actions">
-              <button autoFocus className="secondary" onClick={() => { setConfirmRemoval(false); requestAnimationFrame(() => document.getElementById("remove-activity")?.focus()); }}>Volver sin retirar</button>
-              <button className="primary" onClick={removeActivity}>Confirmar retiro</button>
-            </div>
-          </section>
-        ) : add && (
-          <div className="person form-stack">
-            <h3>{editing ? "Editar actividad" : "Nueva actividad"}</h3>
-            <div className="form-grid">
-              <label>
-                Fecha tentativa
-                <input
-                  id="plan-date"
-                  type="date"
-                  min="2026-11-01"
-                  max="2026-11-30"
-                  value={date}
-                  onChange={(e) => D(e.target.value)}
-                />
-              </label>
-              <label>
-                Farmacia
-                <select value={store} onChange={(e) => S(e.target.value)}>
-                  {stores.filter(s=>settings.owner(s.id)===planner || editing?.store===s.id).map((s) => (
-                    <option value={s.id} key={s.id}>
-                      {s.name} · {s.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Modalidad
-                <select value={mode} onChange={(e) => M(e.target.value)}>
-                  <option>Presencial</option>
-                  <option>Online</option>
-                  <option>Otros</option>
-                </select>
-              </label>
-              <label>
-                Actividad
-                <select value={type} onChange={(e) => Y(e.target.value)}>
-                  {activities.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="actions">
-              {editing && <button id="remove-activity" className="text-btn" onClick={() => setConfirmRemoval(true)}>Retirar actividad</button>}
-              <button className="secondary" onClick={() => A(false)}>Cancelar</button>
-              <button className="primary" onClick={save}>
-                {editing ? "Guardar cambios" : "Guardar actividad"}
+        <div className="heading-line">
+          <div className="tabs">
+            {["Mensual", "Semanal"].map((x, i) => (
+              <button
+                key={x}
+                className={Number(week) === i ? "selected" : ""}
+                onClick={() => W(!!i)}
+              >
+                {x}
               </button>
-            </div>
+            ))}
           </div>
-        )}
-        <div className="tabs">
-          {["Actividades", "Sugerencias", "Consideraciones"].map((x) => (
+          <div className="table-tools">
             <button
-              className={tab === x ? "selected" : ""}
-              key={x}
-              onClick={() => T(x)}
+              aria-label="Período anterior"
+              className="iconbtn"
+              onClick={() => shift(-1)}
             >
-              {x}
+              <ChevronLeft />
+            </button>
+            <button className="text-btn" onClick={() => S(today)}>
+              Hoy
+            </button>
+            <button
+              aria-label="Período siguiente"
+              className="iconbtn"
+              onClick={() => shift(1)}
+            >
+              <ChevronRight />
+            </button>
+          </div>
+        </div>
+        <div className="calendar">
+          {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((x) => (
+            <b key={x}>{x}</b>
+          ))}
+          {dates.map((x) => (
+            <button
+              className={selected === x ? "with-session" : ""}
+              key={x}
+              onClick={() => S(x)}
+            >
+              {Number(x.slice(-2))}
+              <small>
+                {plan.filter((r) => r.date === x).length || ""}{" "}
+                {plan.some((r) => r.date === x) ? "activ." : ""}
+              </small>
             </button>
           ))}
         </div>
-        {tab === "Actividades" ? (
-          <>
-            <div className="inline">
-              <button className="secondary" onClick={() => W(!week)}>
-                {week ? "Ver mes completo" : "Ver semana"}
-              </button>
-              {week && (
-                <>
-                  <button
-                    className="iconbtn"
-                    disabled={start <= 2}
-                    onClick={() => B(start - 7)}
-                    aria-label="Semana anterior"
-                  >
-                    <ChevronLeft />
-                  </button>
-                  <small>
-                    {start}–{Math.min(start + 6, 30)} nov.
-                  </small>
-                  <button
-                    className="iconbtn"
-                    disabled={start >= 30}
-                    onClick={() => B(start + 7)}
-                    aria-label="Semana siguiente"
-                  >
-                    <ChevronRight />
-                  </button>
-                </>
-              )}
-            </div>
-            <div className="scroll">
-              <table>
-                <thead>
-                  <tr>
-                    {[
-                      "Fecha tentativa",
-                      "Farmacia",
-                      "Actividad",
-                      "Modalidad",
-                      "Supervisor / jefatura",
-                      "Fecha real",
-                      "Acción",
-                    ].map((x) => (
-                      <th key={x}>{x}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, i) => {
-                    const s = stores.find((s) => s.id === r.store)!;
-                    const v = visits.find(
-                      (v) => v.store === s.id && v.date === r.date,
-                    );
-                    return (
-                      <tr key={i}>
-                        <td>{dateText(r.date)}</td>
-                        <td>
-                          <button
-                            className="text-btn"
-                            onClick={() => open(s.id)}
-                          >
-                            {s.name}
-                          </button>
-                          <small>{s.id}</small>
-                        </td>
-                        <td>{r.type}</td>
-                        <td>{r.mode}</td>
-                        <td>
-                          {s.supervisor}
-                          <small>{s.boss}</small>
-                        </td>
-                        <td>{v ? dateText(v.date) : "Sin registrar"}</td>
-                        <td>{v ? "Registrada" : <button className="text-btn" aria-label={`Editar actividad de ${s.name} del ${dateText(r.date)}`} onClick={() => showForm(r)}>Editar</button>}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {!rows.length && (
-              <p className="empty">{week ? "Sin actividades esta semana." : "El plan está vacío. Agrega una actividad para publicarlo."}</p>
-            )}
-            <div className="actions">
-              <button
-                className="secondary"
-                onClick={() => {
-                  publish(false);
-                  notify("Plan guardado como borrador.");
-                }}
-              >
-                Guardar borrador
-              </button>
-              <button
-                className="primary"
-                disabled={published || !plan.length}
-                onClick={() => {
-                  publish(true);
-                  notify("Plan publicado para jefatura.");
-                }}
-              >
-                <Check size={15} /> Publicar plan
-              </button>
-            </div>
-          </>
-        ) : tab === "Consideraciones" ? (
-          notices.map((n, i) => (
-            <div className="simple-row" key={i}>
+        <small>
+          {monthRows.filter(done).length} cumplidas de {monthRows.length}{" "}
+          planificadas este mes
+        </small>
+        <div className="heading-line">
+          <h3>{dateText(selected)}</h3>
+          <button className="secondary" onClick={() => F(!form)}>
+            <Plus size={15} /> Actividad
+          </button>
+        </div>
+        {form && (
+          <form
+            className="form-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget),
+                r = {
+                  store: String(f.get("store")),
+                  date: selected,
+                  mode: String(f.get("mode")),
+                  type: String(f.get("type")),
+                };
+              if (
+                plan.some(
+                  (x) =>
+                    x.store === r.store &&
+                    x.date === r.date &&
+                    x.type === r.type,
+                )
+              )
+                return notify("Esta actividad ya está planificada.");
+              setPlan([...plan, r]);
+              setPublished(false);
+              F(false);
+              notify("Actividad agregada al borrador.");
+            }}
+          >
+            <label>
+              Actividad
+              <select name="type">
+                <option>Visita general</option>
+                <option>Trabajo administrativo</option>
+                <option>Capacitación</option>
+              </select>
+            </label>
+            <label>
+              Farmacia
+              <select required name="store">
+                {owned.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.id} · {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Modalidad
+              <select name="mode">
+                <option>Presencial</option>
+                <option>Online</option>
+              </select>
+            </label>
+            <button className="primary">Guardar actividad</button>
+          </form>
+        )}
+        {plan
+          .filter((r) => r.date === selected)
+          .map((r, i) => (
+            <button
+              className="simple-row"
+              onClick={() => open(r.store)}
+              key={i}
+            >
               <div>
-                <strong>{n.title}</strong>
+                <strong>{stores.find((s) => s.id === r.store)?.name}</strong>
                 <small>
-                  {dateText(n.date)} · {n.to}
-                  {n.hotel
-                    ? " · Hospedaje solicitado el " + dateText(n.hotel)
-                    : ""}
+                  {r.type} · {r.mode}
                 </small>
               </div>
-            </div>
-          ))
-        ) : (
-          <>
-            <p>
-              Sugerencias sin visita en los últimos 14 días, ordenadas por
-              prioridad. Tú decides cuáles incorporar.
-            </p>
-            <label>
-              Motivo para rechazar
-              <input
-                value={reason}
-                onChange={(e) => R(e.target.value)}
-                placeholder="Indica un motivo antes de rechazar"
-              />
-            </label>
-            {rejected.length>0 && <details><summary>Sugerencias rechazadas ({rejected.length})</summary>{rejected.map(([id,motivo])=><p key={id}>{stores.find(s=>s.id===id)?.name} · {motivo}</p>)}</details>}
-            {cartera.map(s=>({...s,school:settings.school(s.id),freq:settings.frequency[s.id]||s.freq}))
-              .filter(
-                (s) =>
-                  [
-                    s.last,
-                    ...visits
-                      .filter((v) => v.store === s.id)
-                      .map((v) => v.date),
-                  ]
-                    .sort()
-                    .at(-1)! < "2026-11-10" &&
-                  !settings.rejected[s.id] &&
-                  !plan.some((r) => r.store === s.id && r.date > today),
-              )
-              .sort(
-                (a, b) =>
-                  status(a, visits, tasks).p - status(b, visits, tasks).p,
-              )
-              .map((s) => (
-                <div className="simple-row" key={s.id}>
-                  <div>
-                    <strong>{s.name}</strong>
-                    <small>
-                      P{status(s, visits, tasks).p} · {s.id}
-                    </small>
-                  </div>
-                  <button
-                    className="secondary"
-                    onClick={() => {
-                      if (!reason.trim())
-                        return notify("Escribe el motivo del rechazo.");
-                      settings.rejectSuggestion(s.id,reason.trim());
-                      R("");
-                    }}
-                  >
-                    Rechazar
-                  </button>
-                  <button
-                    className="primary"
-                    onClick={() => {
-                      showForm(null, s.id);
-                    }}
-                  >
-                    Aceptar
-                  </button>
-                </div>
-              ))}
-          </>
+              <span className="pill green">
+                {done(r)
+                  ? "Cumplida"
+                  : r.date < today
+                    ? "Por regularizar"
+                    : "Planificada"}
+              </span>
+            </button>
+          ))}
+        {!plan.some((r) => r.date === selected) && (
+          <p className="empty">
+            No hay actividades para este día. Agrega una actividad.
+          </p>
+        )}
+        {!isPublished && (
+          <button
+            className="primary"
+            onClick={() => {
+              setPublished(true);
+              notify("Plan publicado.");
+            }}
+          >
+            Publicar plan
+          </button>
         )}
       </section>
-    </>
+      <section className="panel form-panel">
+        <h2>Consideraciones de jefatura</h2>
+        {notices.length ? (
+          notices.map((n, i) => (
+            <p key={i}>
+              {n.title} · {dateText(n.date)}
+            </p>
+          ))
+        ) : (
+          <small>No hay consideraciones para este plan.</small>
+        )}
+      </section>
+    </div>
   );
 }

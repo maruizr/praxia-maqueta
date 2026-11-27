@@ -1,47 +1,40 @@
 "use client";
 import {
-  ArrowRight,
-  ArrowUpRight,
   CalendarDays,
-  ChevronRight,
-  ClipboardCheck,
-  Flag,
-  Clock3,
-  MapPin,
   Plus,
-  Sun,
+  ArrowUpRight,
+  ArrowRight,
+  ChevronRight,
+  MapPin,
+  Store,
+  ClipboardCheck,
   Users,
-  Store as Shop,
+  Clock3,
+  Flag,
+  UserRoundPlus,
+  Layers,
+  Sun,
   Video,
-  TriangleAlert,
-  Target,
-  TrendingUp,
-  Route,
+  ChartNoAxesCombined,
 } from "lucide-react";
-import {useSettings} from './settings';
-import { today, stores, status, type Visit, type Task, type Row } from "./data";
+import {
+  today,
+  stores,
+  dateText,
+  status,
+  type Visit,
+  type Task,
+  type Row,
+} from "./data";
+import { metrics } from "./records";
+import { useSettings } from "./settings";
 export function Spark({ i }: { i: number }) {
-  const lines = [
-    "0,28 8,24 16,26 24,18 32,20 40,13 48,17 56,9 64,13 72,4",
-    "0,26 8,25 16,19 24,22 32,14 40,16 48,8 56,11 64,6 72,3",
-    "0,8 8,8 16,13 24,10 32,18 40,16 48,22 56,19 64,23 72,23",
-    "0,9 8,9 16,14 24,14 32,11 40,17 48,17 56,22 64,21 72,22",
-  ];
   return (
-    <svg aria-hidden="true" className={"spark c" + i} viewBox="0 0 72 32">
-      <polygon
-        points={"0,32 " + lines[i] + " 72,32"}
-        fill="currentColor"
-        opacity=".1"
-      />
-      <polyline
-        points={lines[i]}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <span className={"mini-bars tone" + i} aria-hidden>
+      {[4, 6, 5, 8, 6, 9, 8, 11].map((h, j) => (
+        <i key={j} style={{ height: h * 2 }} />
+      ))}
+    </span>
   );
 }
 export default function Dashboard({
@@ -61,43 +54,32 @@ export default function Dashboard({
   plan: Row[];
   first?: string;
 }) {
-  const settings = useSettings();
-  const red = stores.filter((s) => settings.owner(s.id) === 'Camila Morales' && status({...s,school:settings.school(s.id)}, visits, tasks).p === 1).length,
-    late = tasks.filter((t) => !t.closed && t.date < today).length,
-    rows = plan.filter((r) => r.date === today);
-  const data = [
+  const ctx = useSettings(),
+    own = stores.filter((s) => ctx.owner(s.id) === "Camila Morales"),
+    m = metrics(
+      visits,
+      own.map((s) => s.id),
+    ),
+    rows = plan.filter((p) => p.date === today),
+    due = tasks.filter((t) => !t.closed && !t.cancelled && t.date <= today),
+    red = own.filter(
+      (s) => ctx.flags[s.id] || status(s, visits, tasks).p === 1,
+    ).length,
+    h = new Date().getHours();
+  const stats = [
     [
-      "Gestiones del mes",
-      32 + visits.reduce((n, v) => n + v.actions.length, 0),
-      "de 45 planificadas",
-      ClipboardCheck,
-      "Mi desempeño",
+      Store,
+      "Cobertura de cartera",
+      m.coverage + "%",
+      `${m.covered} de ${own.length} farmacias`,
     ],
+    [ClipboardCheck, "Gestiones del mes", m.count, "Gestiones registradas"],
+    [Users, "Personas capacitadas", m.people, "Colaboradores este mes"],
     [
-      "Personas alcanzadas",
-      86 +
-        new Set(
-          visits.flatMap((v) =>
-            v.actions.flatMap((a) => a.persons.map((p) => p.id)),
-          ),
-        ).size,
-      "colaboradores este mes",
-      Users,
-      "Mi desempeño",
-    ],
-    [
-      "Farmacias en foco rojo",
-      red,
-      "requieren una visita",
-      Flag,
-      "Focos rojos",
-    ],
-    [
-      "Pendientes vencidos",
-      late,
-      "requieren seguimiento",
       Clock3,
-      "Mis pendientes",
+      "Pendientes abiertos",
+      tasks.filter((t) => !t.closed && !t.cancelled).length,
+      `${due.length} requieren atención`,
     ],
   ] as const;
   return (
@@ -106,35 +88,61 @@ export default function Dashboard({
         <div className="hero-art" />
         <div className="hero-copy">
           <div className="eyebrow hero-date">
-            <Sun size={15} /> Lunes, 23 de noviembre de 2026
+            <Sun size={15} /> Tu jornada en terreno
           </div>
-          <h1>¡Buen día, {first}!</h1>
-          <p>Este es el panorama de tu jornada en terreno.</p>
+          <h1>
+            {h < 12
+              ? "Buenos días"
+              : h < 20
+                ? "Buenas tardes"
+                : "Buenas noches"}
+            , {first}
+          </h1>
+          <p>
+            {new Date().toLocaleDateString("es-CL", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })}
+          </p>
           <button className="primary" onClick={visit}>
-            <Plus size={16} /> Registrar visita
+            <Plus size={17} /> Registrar gestión
           </button>
         </div>
       </section>
       <div className="section-title">
-        <h2>Resumen de actividad</h2>
+        <h2>Resumen del mes</h2>
         <span className="period">
-          <CalendarDays size={14} /> Noviembre 2026
+          <CalendarDays size={14} />
+          {new Date().toLocaleDateString("es-CL", {
+            month: "long",
+            year: "numeric",
+          })}
         </span>
       </div>
       <div className="metric-grid">
-        {data.map(([label, n, sub, Icon, page], i) => (
-          <button className="metric" onClick={() => go(page)} key={label}>
-            <span className="metric-head">
+        {stats.map(([Icon, title, n, caption], i) => (
+          <button
+            key={title}
+            className={"metric stat-" + i}
+            onClick={() => go(i === 3 ? "Pendientes" : "Mi desempeño")}
+          >
+            <div className="metric-head">
               <i className={"tile c" + i}>
                 <Icon size={18} />
               </i>
-              {label}
-            </span>
+              <span>{title}</span>
+            </div>
             <div className="metric-body">
               <strong>{n}</strong>
-              <Spark i={i} />
+              {i === 0 ? (
+                <span className="progress-rail">
+                  <i style={{ width: m.coverage + "%" }} />
+                </span>
+              ) : null}
             </div>
-            <small>{sub}</small>
+            <small>{caption}</small>
           </button>
         ))}
       </div>
@@ -142,86 +150,85 @@ export default function Dashboard({
         <section className="panel agenda">
           <div className="panel-heading">
             <div className="eyebrow">
-              <span className="dot" /> Mi planificación
+              <span className="dot" /> Planificación
             </div>
             <div className="heading-line">
               <h2>
-                Actividades de hoy <em>{rows.length}</em>
+                Visitas de hoy <em>{rows.length}</em>
               </h2>
               <button className="text-btn" onClick={() => go("Plan del mes")}>
-                Ver plan <ArrowUpRight size={15} />
+                Ver plan <ArrowRight size={14} />
               </button>
             </div>
           </div>
           {rows.map((r, i) => {
             const s = stores.find((s) => s.id === r.store)!;
             return (
-              <button key={i} className="activity" onClick={() => open(s.id)}>
-                <i
-                  className={
-                    "activity-icon " + (r.mode === "Online" ? "online" : "")
-                  }
-                >
-                  {r.mode === "Online" ? <Video /> : <Shop />}
+              <button className="activity" key={i} onClick={() => open(s.id)}>
+                <i className="activity-icon">
+                  {r.mode === "Online" ? <Video /> : <Store />}
                 </i>
                 <div>
-                  <small>
-                    {s.id} <b>·</b> {s.place}
-                  </small>
+                  <small className="code">{s.id}</small>
                   <h3>{s.name}</h3>
-                  <span>
-                    <span
-                      className={
-                        "pill " + (r.mode === "Online" ? "violet" : "green")
-                      }
-                    >
-                      {r.mode}
-                    </span>
-                    <small>{r.type}</small>
-                  </span>
+                  <small className="location">
+                    <MapPin size={12} />
+                    {s.place}
+                  </small>
                 </div>
-                <ChevronRight size={16} />
+                <span
+                  className={
+                    "pill " + (r.mode === "Online" ? "violet" : "green")
+                  }
+                >
+                  {r.mode}
+                </span>
+                <ChevronRight size={15} />
               </button>
             );
           })}
           {!rows.length && (
-            <p className="empty">No hay actividades para hoy.</p>
+            <p className="empty">
+              Sin visitas para hoy. Agrega una en el plan.
+            </p>
           )}
         </section>
         <div className="right-stack">
           <section className="panel alerts">
             <div className="eyebrow">
-              <span className="dot gold" /> Atención prioritaria
+              <span className="dot gold" /> Seguimiento
             </div>
-            <h2>Alertas del día</h2>
-            <button onClick={() => go("Focos rojos")}>
-              <i className="tile c2">
-                <Flag size={17} />
+            <h2>Requieren tu atención</h2>
+            <button onClick={() => go("Pendientes")}>
+              <i className="tile warm">
+                <Clock3 size={18} />
               </i>
               <div>
-                <strong>{red} farmacias en foco rojo</strong>
-                <small>Revisa tu cartera prioritaria</small>
+                <strong>Pendientes por resolver</strong>
+                <small>{due.length} vencidos o para hoy</small>
               </div>
-              <ChevronRight size={15} />
+              <ChevronRight size={16} />
             </button>
-            <button onClick={() => go("Mis pendientes")}>
-              <i className="tile c3">
-                <Clock3 size={17} />
+            <button onClick={() => go("Focos rojos")}>
+              <i className="tile rose">
+                <Flag size={18} />
               </i>
               <div>
-                <strong>{late} seguimientos vencidos</strong>
-                <small>Retoma los pendientes</small>
+                <strong>Farmacias en foco rojo</strong>
+                <small>{red} necesitan una visita</small>
               </div>
-              <ChevronRight size={15} />
+              <ChevronRight size={16} />
             </button>
           </section>
-          <button className="campaign" onClick={() => go("Ventas y concursos")}>
+          <button className="campaign" onClick={() => go("Campañas")}>
             <div className="campaign-lines" />
-            <div className="eyebrow">Campaña vigente</div>
+            <div className="eyebrow">
+              <Layers size={14} /> Campaña vigente
+            </div>
             <h2>
-              Impulso G8 <ArrowUpRight size={19} />
+              Impulso G8 <ArrowUpRight size={18} />
             </h2>
-            <p>Entrenamiento comercial · Noviembre</p>
+            <p>Ver seguimiento de campaña</p>
           </button>
         </div>
       </div>
