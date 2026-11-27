@@ -1,7 +1,138 @@
-'use client';
-import {useState} from 'react';
-import {readSheetText} from './sheets';
-import {columns, parseBatch, type Source, type Batch} from './import-data';
-import {useSettings} from './settings';
-export function ImportPanel(){const {batches,commitBatch}=useSettings(); const [source,S]=useState<Source>('Dotación de personal'),[batch,B]=useState<Batch|null>(null),[message,M]=useState(''),[version,V]=useState(0); const locked=source==='Histórico de visitas' && batches.some(b=>b.source===source);
-return <><h2>Cargas de datos externos</h2><label>Fuente<select value={source} onChange={e=>{S(e.target.value as Source);B(null);M('')}}>{Object.keys(columns).map(k=><option key={k}>{k}</option>)}</select></label><p>Columnas de la primera hoja de Excel o del CSV: <code>{columns[source].join(';')}</code>. Usa coma o punto y coma. Las fechas se ingresan como AAAA-MM-DD.</p><label>Archivo Excel o CSV (máximo 1 MB)<input key={source+version} type="file" accept=".xlsx,.csv,text/csv" disabled={locked} onChange={async e=>{const input=e.currentTarget,file=input.files?.[0]; B(null);M('');if(!file)return;try{if(file.size>1048576)throw Error('El archivo supera 1 MB.');const b=parseBatch(await readSheetText(file),source,file.name);if(input.isConnected && input.files?.[0]===file)B(b)}catch(err){if(input.isConnected)M((err as Error).message)}}}/></label>{source==='Dotación de personal'&&<button className="secondary" onClick={()=>{B(parseBatch('farmacia;numero;nombre;cargo\nF1064;8;Sofía Rojas;Auxiliar de farmacia\nF1064;X;Diego López;Encargado\nF9999;1;Ana Díaz;Auxiliar de farmacia',source,'Dotación de ejemplo'));M('')}}>Probar con dotación de ejemplo</button>}{locked&&<p>El histórico ya fue cargado. Esta fuente admite una sola carga.</p>}{batch&&<><h3>Vista previa</h3><p>{batch.rows.length} válidas · {batch.errors.length} rechazadas</p>{batch.rows.slice(0,5).map((r,i)=><small key={i}>{r.join(' · ')}</small>)}{batch.errors.map(x=><small key={x}>{x}</small>)}<button className="primary" disabled={!batch.rows.length||locked} onClick={()=>{commitBatch(batch);B(null);V(v=>v+1);M('Carga aplicada. Los datos ya están disponibles en la maqueta.')}}>Confirmar carga</button></>}{message&&<p role="status">{message}</p>}<h3>Registro de cargas</h3>{!batches.length&&<small>Aún no se han confirmado archivos.</small>}{batches.map((b,i)=><details key={i}><summary>{b.source} · {b.filename}</summary><p>{b.rows.length} cargadas · {b.errors.length} rechazadas</p>{b.rows.map((r,j)=><p key={j}>{r.join(' · ')}</p>)}{b.errors.map(e=><p key={e}>{e}</p>)}</details>)}</>}
+"use client";
+import { useState } from "react";
+import { readSheetText } from "./sheets";
+import { columns, parseBatch, type Source, type Batch } from "./import-data";
+import { useSettings } from "./settings";
+export function ImportPanel({
+  sources = Object.keys(columns) as Source[],
+}: { sources?: Source[] } = {}) {
+  const { batches, commitBatch } = useSettings();
+  const [source, S] = useState<Source>(sources[0]),
+    [batch, B] = useState<Batch | null>(null),
+    [message, M] = useState(""),
+    [version, V] = useState(0);
+  const locked =
+    source === "Histórico de visitas" &&
+    batches.some((b) => b.source === source);
+  return (
+    <>
+      <h2>Cargas de datos externos</h2>
+      <label>
+        Fuente
+        <select
+          value={source}
+          onChange={(e) => {
+            S(e.target.value as Source);
+            B(null);
+            M("");
+          }}
+        >
+          {sources.map((k) => (
+            <option key={k}>{k}</option>
+          ))}
+        </select>
+      </label>
+      <p>
+        Columnas de la primera hoja de Excel o del CSV:{" "}
+        <code>{columns[source].join(";")}</code>. Usa coma o punto y coma. Las
+        fechas se ingresan como AAAA-MM-DD.
+      </p>
+      <label>
+        Archivo Excel o CSV (máximo 1 MB)
+        <input
+          key={source + version}
+          type="file"
+          accept=".xlsx,.csv,text/csv"
+          disabled={locked}
+          onChange={async (e) => {
+            const input = e.currentTarget,
+              file = input.files?.[0];
+            B(null);
+            M("");
+            if (!file) return;
+            try {
+              if (file.size > 1048576) throw Error("El archivo supera 1 MB.");
+              const b = parseBatch(
+                await readSheetText(file),
+                source,
+                file.name,
+              );
+              if (input.isConnected && input.files?.[0] === file) B(b);
+            } catch (err) {
+              if (input.isConnected) M((err as Error).message);
+            }
+          }}
+        />
+      </label>
+      {source === "Dotación de personal" && (
+        <button
+          className="secondary"
+          onClick={() => {
+            B(
+              parseBatch(
+                "farmacia;numero;nombre;cargo\nF0373;8;Sofía Rojas;Auxiliar de farmacia\nF0373;X;Diego López;Encargado\nF9999;1;Ana Díaz;Auxiliar de farmacia",
+                source,
+                "Dotación de ejemplo",
+              ),
+            );
+            M("");
+          }}
+        >
+          Probar con dotación de ejemplo
+        </button>
+      )}
+      {locked && (
+        <p>El histórico ya fue cargado. Esta fuente admite una sola carga.</p>
+      )}
+      {batch && (
+        <>
+          <h3>Vista previa</h3>
+          <p>
+            {batch.rows.length} válidas · {batch.errors.length} rechazadas
+          </p>
+          {batch.rows.slice(0, 5).map((r, i) => (
+            <small key={i}>{r.join(" · ")}</small>
+          ))}
+          {batch.errors.map((x) => (
+            <small key={x}>{x}</small>
+          ))}
+          <button
+            className="primary"
+            disabled={!batch.rows.length || !!batch.errors.length || locked}
+            onClick={() => {
+              commitBatch(batch);
+              B(null);
+              V((v) => v + 1);
+              M(
+                "Carga aplicada. Los datos ya están disponibles en la maqueta.",
+              );
+            }}
+          >
+            Confirmar carga
+          </button>
+        </>
+      )}
+      {message && <p role="status">{message}</p>}
+      <h3>Registro de cargas</h3>
+      {!batches.length && <small>Aún no se han confirmado archivos.</small>}
+      {batches
+        .filter((b) => sources.includes(b.source))
+        .map((b, i) => (
+          <details key={i}>
+            <summary>
+              {b.source} · {b.filename}
+            </summary>
+            <p>
+              {b.rows.length} cargadas · {b.errors.length} rechazadas
+            </p>
+            {b.rows.map((r, j) => (
+              <p key={j}>{r.join(" · ")}</p>
+            ))}
+            {b.errors.map((e) => (
+              <p key={e}>{e}</p>
+            ))}
+          </details>
+        ))}
+    </>
+  );
+}

@@ -1,71 +1,149 @@
 "use client";
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { stores, today, employees, team, storeIndex } from "./data";
-import {initialContests,type Contest} from './contests';
-import type {Batch} from './import-data';
-type Grant={who:string;info:string;territory:string;start:string;end:string};
-export {team};
-export type Cover = { store: string; who: string; start: string; end: string };
-type Settings = {
-  contests:Contest[];setContests:(c:Contest[])=>void;
-  rejected:Record<string,string>; rejectSuggestion:(id:string,reason:string)=>void;
-  batches:Batch[]; commitBatch:(b:Batch)=>void;
-  roster:typeof employees; school:(id:string)=>string;
-  approve:(g:Grant)=>void; allowed:(who:string,info:string,id:string)=>boolean;
-  publicity:File|null; setPublicity:(f:File)=>void;
-  frequency: Record<string, number>;
-  setFreq: (id: string, n: number) => void;
-  covers: Cover[];
-  cover: (rows: Cover[]) => void;
-  products: string[];
-  toggle: (s: string) => void;
-  permission: (who: string, perm: string) => boolean;
-  grant: (who: string, perm: string, v: boolean) => void;
-  owner: (id: string, date?: string) => string;
+import { stores, storeIndex, today, employees, team } from "./data";
+import { initialContests } from "./contests";
+import { useLocal, useGrants } from "./local";
+import type { Batch } from "./import-data";
+export { team };
+export type Cover = {
+  store: string;
+  who: string;
+  start: string;
+  end: string;
+  reason?: string;
+  temporary?: boolean;
 };
-const C = createContext<Settings | null>(null);
-export const useSettings = () => useContext(C)!;
-export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [frequency, F] = useState<Record<string, number>>({}),
-    [covers, A] = useState<Cover[]>([]),
-    [products, P] = useState(["Vitamina C G8"]),
-    [permissions, G] = useState<Record<string, boolean>>({
-      "Paula Fuentes:escuela": true,
-      "Tomás Vidal:escuela": true,
-    });
-  const [contests,setContests]=useState(initialContests);
-  const [rejected,setRejected]=useState<Record<string,string>>({});
-  const [batches,setBatches]=useState<Batch[]>([]), [grants,setGrants]=useState<Grant[]>([]), [publicity,setPublicity]=useState<File|null>(null);
-  function roster(id:string){const map=new Map(employees(id).map(p=>[p.id,p])); for(const b of batches) if(b.source==='Dotación de personal') for(const [store,num,name,job] of b.rows) if(store===id)map.set(`${id}-${num}`,{id:`${id}-${num}`,name,job});return Array.from(map.values())}
+type Grant = {
+  who: string;
+  info: string;
+  territory: string;
+  start: string;
+  end: string;
+};
+type Staff = {
+  id: string;
+  name: string;
+  job: string;
+  inactive?: string;
+  note?: string;
+  provisional?: boolean;
+};
+function useModel() {
+  const [contests, setContests] = useLocal("concursos", initialContests),
+    [batches, B] = useLocal<Batch[]>("cargas", []),
+    [covers, C] = useLocal<Cover[]>("asignaciones", []),
+    [frequency, F] = useLocal<Record<string, number>>("frecuencias", {}),
+    [products, P] = useLocal("productos", ["Vitamina C G8"]),
+    [rejected, R] = useLocal<Record<string, string>>("sugerencias", {}),
+    [access, A] = useGrants(),
+    [grants, G] = useLocal<Grant[]>("accesos", []),
+    [publicity, setPublicity] = useState<File | null>(null),
+    [staff, U] = useLocal<Staff[]>("dotacion", [
+      {
+        ...employees(stores[0].id)[4],
+        inactive: today,
+        note: "Término de contrato",
+      },
+      {
+        id: stores[1].id + "-98",
+        name: "Luisa Prado",
+        job: "Auxiliar de farmacia",
+        provisional: true,
+      },
+    ]);
+  const [flags, flag] = useLocal<Record<string, string>>("alertas-farmacia", {
+    [stores[1].id]: "Ventas bajas",
+    [stores[2].id]: "Nuevos ingresos sin capacitar",
+  });
   const owner = (id: string, date = today) =>
-    covers.find((r) => r.store === id && r.start <= date && r.end >= date)
-      ?.who || stores[storeIndex.get(id)!]?.owner || '';
-  return (
-    <C.Provider
-      value={{
-        contests,setContests,rejected,rejectSuggestion:(id,reason)=>setRejected(prev=>({...prev,[id]:reason})),
-        batches,commitBatch:b=>setBatches(prev=>b.source==='Histórico de visitas'&&prev.some(x=>x.source===b.source)?prev:[...prev,b]),roster,
-        school:id=>[stores[storeIndex.get(id)!].school,...batches.filter(b=>b.source==='Asistencia de Simi Escuela').flatMap(b=>b.rows.filter(r=>r[0]===id).map(r=>r[1]))].sort().at(-1)!,
-        approve:g=>setGrants(prev=>[...prev,g]),allowed:(who,info,id)=>owner(id)===who||grants.some(g=>g.who===who&&(g.info===info||(info==='Ventas'&&g.info==='Exportar ventas'))&&g.start<=today&&g.end>=today&&g.territory===stores.find(s=>s.id===id)?.zone),publicity,setPublicity,
-        frequency,
-        setFreq: (id, n) => {
-          if (n >= 1 && n <= 4) F({ ...frequency, [id]: n });
-        },
-        covers,
-        cover: (rows) => A(prev => [...prev, ...rows]),
-        products,
-        toggle: (s) =>
-          P(
-            products.includes(s)
-              ? products.filter((x) => x !== s)
-              : [...products, s],
+    [...covers]
+      .reverse()
+      .find(
+        (c) =>
+          !c.temporary &&
+          c.store === id &&
+          c.start.slice(0, 7) <= date.slice(0, 7) &&
+          c.end >= date,
+      )?.who ??
+    batches
+      .filter((b) => b.source === "Carteras")
+      .flatMap((b) => b.rows)
+      .reverse()
+      .find((r) => r[0] === id && r[2] === date.slice(0, 7))?.[1] ??
+    stores[storeIndex.get(id)!]?.owner ??
+    "";
+  function allStaff(id: string) {
+    const map = new Map<string, Staff>(employees(id).map((p) => [p.id, p]));
+    batches
+      .filter((b) => b.source === "Dotación de personal")
+      .forEach((b) =>
+        b.rows
+          .filter((r) => r[0] === id)
+          .forEach((r) =>
+            map.set(id + "-" + r[1], {
+              id: id + "-" + r[1],
+              name: r[2],
+              job: r[3],
+            }),
           ),
-        permission: (w, p) => !!permissions[w + ":" + p],
-        grant: (w, p, v) => G({ ...permissions, [w + ":" + p]: v }),
-        owner,
-      }}
-    >
-      {children}
-    </C.Provider>
-  );
+      );
+    staff
+      .filter((p) => p.id.startsWith(id + "-"))
+      .forEach((p) => map.set(p.id, p));
+    return [...map.values()];
+  }
+  return {
+    flags,
+    flagStore: (id: string, reason: string) => flag({ ...flags, [id]: reason }),
+    contests,
+    setContests,
+    batches,
+    commitBatch: (b: Batch) => B((v) => [...v, b]),
+    covers,
+    cover: (c: Cover[]) => C((v) => [...v, ...c]),
+    owner,
+    allStaff,
+    roster: (id: string) => allStaff(id).filter((p) => !p.inactive),
+    staffUpdate: (p: Staff) => U((v) => [...v.filter((x) => x.id !== p.id), p]),
+    school: (id: string) => stores[storeIndex.get(id)!]?.school ?? today,
+    frequency,
+    setFreq: (id: string, n: number) => F({ ...frequency, [id]: n }),
+    products,
+    toggle: (s: string) =>
+      P(
+        products.includes(s)
+          ? products.filter((x) => x !== s)
+          : [...products, s],
+      ),
+    rejected,
+    rejectSuggestion: (id: string, reason: string) =>
+      R({ ...rejected, [id]: reason }),
+    permission: (who: string, p: string) =>
+      (access[who] ?? []).includes(
+        p === "escuela" ? "Habilitar Simi Escuela" : p,
+      ),
+    grant: (w: string, p: string, on: boolean) =>
+      A({
+        ...access,
+        [w]: [...(access[w] ?? []).filter((x) => x !== p), ...(on ? [p] : [])],
+      }),
+    allowed: (who: string, info: string, id: string) =>
+      owner(id) === who ||
+      grants.some(
+        (g) =>
+          g.who === who &&
+          g.info === info &&
+          g.start <= today &&
+          g.end >= today,
+      ),
+    approve: (g: Grant) => G([...grants, g]),
+    publicity,
+    setPublicity,
+  };
+}
+const Context = createContext<ReturnType<typeof useModel> | null>(null);
+export const useSettings = () => useContext(Context)!;
+export function SettingsProvider({ children }: { children: ReactNode }) {
+  const settings = useModel();
+  return <Context.Provider value={settings}>{children}</Context.Provider>;
 }

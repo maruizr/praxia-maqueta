@@ -1,4 +1,4 @@
 import Praxia from "@/components/praxia/workspace";
 export default function Page() {
-  return <Praxia ingreso />;
+  return <Praxia />;
 }
