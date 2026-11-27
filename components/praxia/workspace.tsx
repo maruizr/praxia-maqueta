@@ -97,9 +97,25 @@ const admins: [string, LucideIcon][] = [
   ["Indicadores", ChartNoAxesColumnIncreasing],
 ];
 const readRoute = () => {
-  const [page, id] = location.hash.slice(1).split("/").map(decodeURIComponent);
-  return { page: page || home, id: id || "" };
+  const url = new URL(location.href);
+  if (url.hash) {
+    try {
+      const [page, id] = url.hash.slice(1).split("/").map(decodeURIComponent);
+      return { page: page || home, id: id || "" };
+    } catch {
+      // A malformed legacy bookmark should not prevent the workspace from opening.
+    }
+  }
+  return { page: url.searchParams.get("pagina") || home, id: url.searchParams.get("registro") || "" };
 };
+function routeUrl(page: string, id: string) {
+  const url = new URL(location.href);
+  url.hash = "";
+  url.searchParams.set("pagina", page);
+  if (id) url.searchParams.set("registro", id);
+  else url.searchParams.delete("registro");
+  return url;
+}
 const emptyTasks = [
   ...seedTasks,
   { ...seedTasks[0], id: "seed-cancel", closed: true, cancelled: true },
@@ -204,14 +220,18 @@ function Workspace({ ingreso }: { ingreso: boolean }) {
           if (role) K(false);
         }
       };
-    window.addEventListener("hashchange", pop);
+    if (location.hash) {
+      const { page, id } = readRoute();
+      history.replaceState(history.state, "", routeUrl(page, id));
+    }
+    window.addEventListener("popstate", pop);
     window.addEventListener("online", net);
     window.addEventListener("offline", net);
     window.addEventListener("beforeinstallprompt", prompt);
     window.addEventListener("keydown", key);
     return () => {
       window.removeEventListener("praxia-offline", blocked);
-      window.removeEventListener("hashchange", pop);
+      window.removeEventListener("popstate", pop);
       window.removeEventListener("online", net);
       window.removeEventListener("offline", net);
       window.removeEventListener("beforeinstallprompt", prompt);
@@ -225,8 +245,8 @@ function Workspace({ ingreso }: { ingreso: boolean }) {
   }
   function go(s: string, id = "") {
     if (s === "Inicio del día") s = home;
-    location.hash =
-      encodeURIComponent(s) + (id ? "/" + encodeURIComponent(id) : "");
+    const url = routeUrl(s, id);
+    if (url.href !== location.href) history.pushState(null, "", url);
     G({ page: s, id });
     M(false);
     window.scrollTo(0, 0);
